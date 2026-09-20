@@ -1,0 +1,190 @@
+# Tree types are the folders under plugins/BountyfulWookwork/schematics/. Every
+# folder is its own tree type, named after the folder, and holds that type's .schem
+# files. Add a folder and run /bw reload to add a type.
+#
+# Making a schematic: stand on the spot where the sapling would be (the bottom block
+# of the trunk; for 2x2 trees the north-west trunk block), select the tree, then
+# //copy and //schem save <name>. Move the file into its type's folder and run
+# /bw reload.
+
+# Rotate each pasted tree by a random multiple of 90 degrees.
+random-rotation: true
+
+# false: trees never replace existing blocks. A tree only grows or is placed if its
+# trunk (everything but leaves) lands on air, saplings or plants like grass and
+# flowers; otherwise nothing happens and the sapling stays. Leaves only fill air.
+# true: no checks, the schematic overwrites whatever is in the way.
+#
+# Either way, where the bottom of a trunk hangs over air it reaches one block down.
+overwrite-blocks: false
+
+# How far away, in blocks, a tree brush can place trees.
+brush-range: 256
+
+# Trees placed by this plugin (grown from saplings or placed with a brush) cannot be
+# broken block by block. Cutting into the trunk takes longer the bigger the tree, and
+# once that block breaks the whole tree comes down. Players in creative with the
+# bountyfulwookwork.admin permission still break single blocks.
+felling:
+  # Cutting time = the block's normal break time x tree blocks (leaves included)
+  # x time-per-block. 1.0 with a 200 block tree takes 200 times as long.
+  time-per-block: 1.0
+  # Upper limit for cutting one tree without Efficiency, in seconds. Efficiency
+  # shortens the time from there, like it does for any block.
+  max-seconds: 30
+  # The leaves of a felled tree disappear at random within this many ticks.
+  leaf-decay-ticks: 40
+  # What a felled tree drops, per tree type (schematic folder); "default" covers every
+  # type without its own list. item: a vanilla item like spruce_log, or a Nexo item as
+  # nexo:<id>. per-block: amount per trunk block (everything but leaves), so 0.25 is
+  # one item for every four trunk blocks.
+  drops:
+    default:
+      - item: oak_log
+        per-block: 0.25
+      - item: nexo:hardwood
+        per-block: 0.001
+    birch:
+      - item: birch_log
+        per-block: 0.25
+      - item: nexo:hardwood
+        per-block: 0.001
+    pine:
+      - item: spruce_log
+        per-block: 0.25
+      - item: nexo:hardwood
+        per-block: 0.001
+    norway_pine:
+      - item: spruce_log
+        per-block: 0.25
+      - item: nexo:hardwood
+        per-block: 0.001
+    white_pine:
+      - item: spruce_log
+        per-block: 0.25
+      - item: nexo:hardwood
+        per-block: 0.001
+    silver_fir:
+      - item: spruce_log
+        per-block: 0.25
+      - item: nexo:hardwood
+        per-block: 0.001
+    larch:
+      - item: spruce_log
+        per-block: 0.25
+      - item: nexo:hardwood
+        per-block: 0.001
+
+# Vanilla tree type -> tree type (schematic folder) that grows in its place when a
+# sapling grows. Vanilla types left out, or mapped to a folder with no schematics,
+# grow vanilla trees. Several vanilla types may share a tree type.
+#
+# Vanilla types: TREE, BIG_TREE, SWAMP, BIRCH, TALL_BIRCH, REDWOOD, TALL_REDWOOD,
+# MEGA_REDWOOD, MEGA_PINE, SMALL_JUNGLE, COCOA_TREE, JUNGLE, ACACIA, DARK_OAK,
+# CHERRY, MANGROVE, TALL_MANGROVE, PALE_OAK, PALE_OAK_CREAKING, AZALEA,
+# CRIMSON_FUNGUS, WARPED_FUNGUS, RED_MUSHROOM, BROWN_MUSHROOM
+trees: {}
+#  TREE: small_oak
+#  BIG_TREE: large_oak
+#  BIRCH: birch
+
+# /bw debug generation replaces the trees of newly generated chunks, to look at whole
+# forests of one type. Clearing a chunk happens early so no vanilla tree is left
+# standing; the trees are then placed a few at a time. Both share this much time per
+# tick, so the forest fills in slowly instead of freezing the server.
+debug-generation:
+  tick-budget-ms: 2
+  # At most this many trees are replaced per chunk.
+  trees-per-chunk: 16
+
+# Archiving a tree: select it with //pos1 and //pos2, mark the block it stands on with
+# //trunkpos or /bw trunkpos, then /bw archive <type> <creator>. The type is one of the tree types,
+# made with /bw type <name>; a type is a folder under schematics. The tree names itself
+# type_size_creator_number, like birch_medium_snifferish_1, and its schematic and a yml
+# with type, creator, origin and size land in the archive folder. The creator
+# is either a player, kept by uuid, or an artist registered once with
+# /bw patreon <name> <link>; after that the name alone is enough. That link is to the
+# artist, not to a pack.
+#
+# Every archived tree is sorted into one of these by how big it reads: its height plus
+# its widest side. Neither alone tells trees apart - a fir is tall and thin where an oak
+# is short and broad - but added up they sort the way a builder would. Fitted against
+# the trees already archived by hand, this agrees with 87 of every 100 of them and is
+# never off by more than one step; /bw archive --size <category> overrules it, and a
+# tree too wide for a category's plot moves up a step on its own. Plot sizes are odd
+# multiples of three, so the three by three checkerboard has one middle block.
+categories:
+  - name: shrub
+    max-size: 12
+    plot-size: 9
+  - name: little
+    max-size: 25
+    plot-size: 15
+  - name: medium
+    max-size: 39
+    plot-size: 27
+  - name: large
+    max-size: 60
+    plot-size: 39
+  - name: giant
+    max-size: 90
+    plot-size: 51
+  - name: fantasy
+    max-size: 1000
+    plot-size: 81
+
+
+# /bw layout has two ways of putting the archive on the ground, and both take the trees
+# to use written like WorldEdit blocks: birch,oak or 70%birch,30%oak, or nothing at all
+# for everything in the archive.
+#
+#   /bw layout categorized [trees]  a plot per tree where you stand, ordered by type,
+#                                   then creator, then size; each plot floored with a
+#                                   checkerboard of light gray and cyan terracotta and
+#                                   a red block in the middle, where the trunk goes.
+#   /bw layout terrain [trees]      copies the piece of the prepared world below onto
+#                                   the map you stand in, and turns every marker block
+#                                   in it into a tree.
+layout:
+  # Plots in a row before the next row begins; a new type always starts a new row.
+  row-length: 8
+  # Time spent per tick while working.
+  tick-budget-ms: 10
+  terrain:
+    # The world to copy from, by its key or its plain name. It has to be loaded.
+    world: "worlds:preset_forest"
+    # The piece of it to copy, corner to corner.
+    from-x: -150
+    from-z: -150
+    to-x: 150
+    to-z: 150
+    # How much of the height to take with it.
+    min-y: -64
+    max-y: 160
+    # Where it lands: the same coordinates on the other map, plus this.
+    offset-x: 0
+    offset-z: 0
+    # The block that means a tree. One left standing is one that had no room.
+    marker: gold_block
+
+
+# /bw duplicates reads every blueprint and reports the trees that are in the archive
+# twice, turned or mirrored. It compares the blocks around each tree, not the selection
+# it was saved from, so extra air or a trunk marked a block over changes nothing.
+duplicates:
+  tick-budget-ms: 10
+
+# /bw forest <preset> [x z] plants a saved marker pattern on the middle of the map.
+# A preset is a schematic in plugins/BountyfulWookwork/presets; every marker block in
+# it becomes one tree, standing on whatever ground it ends up over. Save one from a
+# WorldEdit selection with /bw forest save <name>.
+forest:
+  # The middle of the map, where a preset's middle lands.
+  center-x: 0
+  center-z: 0
+  # Time spent per tick while planting.
+  tick-budget-ms: 5
+  # Which block means a tree, and which archived trees it may become: a category, a
+  # tree type, or "any". Add a line per block to mix them inside one preset.
+  markers:
+    gold_block: any

@@ -1,0 +1,18 @@
+[versions]
+paper-api = "26.2.build.+"
+minecraft = "26.2"
+# The server runs 2.15.4; Maven Central stops at 2.15.3, which has the same API.
+fawe = "2.15.3"
+
+paperweight-userdev = "2.0.0-beta.23"
+shadow = "9.6.1"
+run-task = "3.1.0"
+
+[libraries]
+fawe-core = { module = "com.fastasyncworldedit:FastAsyncWorldEdit-Core", version.ref = "fawe" }
+fawe-bukkit = { module = "com.fastasyncworldedit:FastAsyncWorldEdit-Bukkit", version.ref = "fawe" }
+
+[plugins]
+paperweight-userdev = { id = "io.papermc.paperweight.userdev", version.ref = "paperweight-userdev" }
+shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
+run-paper = { id = "xyz.jpenilla.run-paper", version.ref = "run-task" }

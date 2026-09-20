@@ -1,0 +1,25 @@
+name: BountyfulWookwork
+version: '${version}'
+
+main: com.nekyia.bountyfulWookwork.BountyfulWookwork
+api-version: '26.2'
+load: POSTWORLD
+depend: [ FastAsyncWorldEdit ]
+softdepend: [ Nexo ]
+
+authors: [ gerryxn ]
+
+commands:
+  bw:
+    description: Reloads tree types or binds a tree brush to the held item.
+    usage: /bw reload | /bw brush <type|clear> | /bw debug generation <type|off> | /bw type [name|remove <name>] | /bw trunkpos | /bw archive <type> <creator> [--size <category>] | /bw list [type|size|creator] | /bw duplicates | /bw resort <tree> <size> | /bw recreator <tree> <creator> | /bw patreon <name> <link> | /bw layout <categorized|terrain> [trees] | /bw forest <preset> [x z]
+    aliases: [ wookwork ]
+    permission: bountyfulwookwork.admin
+  "/trunkpos":
+    description: Marks the block a tree stands on, for /bw archive.
+    usage: //trunkpos
+    permission: bountyfulwookwork.admin
+
+permissions:
+  bountyfulwookwork.admin:
+    default: op
