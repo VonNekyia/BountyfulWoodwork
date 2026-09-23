@@ -14,14 +14,14 @@ repositories {
 val testServerPluginFolder: Provider<Directory> =
     providers.gradleProperty("testServerPluginFolder")
         .map { layout.projectDirectory.dir(it) }
-        .orElse(layout.projectDirectory.dir("../server-terranova-26.3/servers/main/plugins"))
+        .orElse(layout.projectDirectory.dir("../server-terranova/servers/main/plugins"))
 
 // The build server's plugin folder; every build deploys there as well.
 // Override with -PbuildServerPluginFolder=<path>.
 val buildServerPluginFolder: Provider<Directory> =
     providers.gradleProperty("buildServerPluginFolder")
         .map { layout.projectDirectory.dir(it) }
-        .orElse(layout.projectDirectory.dir("../server-terranova-26.3/servers/build/plugins"))
+        .orElse(layout.projectDirectory.dir("../server-terranova/servers/build/plugins"))
 
 dependencies {
     paperweight.paperDevBundle(libs.versions.paper.api.get())
