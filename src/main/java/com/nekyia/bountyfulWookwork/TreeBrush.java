@@ -23,8 +23,9 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.jspecify.annotations.Nullable;
 
 /**
- * An item bound to a tree type. Right-clicking with it in creative places a random
- * tree of that type on the block the player is looking at, however far away.
+ * An item bound to a selection of archived trees, written like /bw layout terrain takes
+ * them: {@code birch}, {@code birch,oak} or {@code 70%birch,30%oak}. Right-clicking with
+ * it in creative places one of them on the block the player is looking at.
  */
 final class TreeBrush implements Listener {
 
@@ -33,23 +34,25 @@ final class TreeBrush implements Listener {
     /** Trees are only placed where this could stand, i.e. on the blocks saplings grow on. */
     private static final BlockData SAPLING = Material.OAK_SAPLING.createBlockData();
 
+    private final JavaPlugin plugin;
     private final NamespacedKey key;
-    private final TreeSchematics schematics;
+    private final TreeArchive archive;
     private final TreePaster paster;
 
-    TreeBrush(JavaPlugin plugin, TreeSchematics schematics, TreePaster paster) {
+    TreeBrush(JavaPlugin plugin, TreeArchive archive, TreePaster paster) {
+        this.plugin = plugin;
         this.key = new NamespacedKey(plugin, "tree_brush");
-        this.schematics = schematics;
+        this.archive = archive;
         this.paster = paster;
     }
 
-    /** Binds the item to a tree type, or unbinds it when {@code type} is null. */
-    void bind(ItemStack item, @Nullable String type) {
+    /** Binds the item to a selection, or unbinds it when {@code selection} is null. */
+    void bind(ItemStack item, @Nullable String selection) {
         item.editMeta(meta -> {
-            if (type == null) {
+            if (selection == null) {
                 meta.getPersistentDataContainer().remove(key);
             } else {
-                meta.getPersistentDataContainer().set(key, PersistentDataType.STRING, type);
+                meta.getPersistentDataContainer().set(key, PersistentDataType.STRING, selection);
             }
         });
     }
@@ -68,8 +71,8 @@ final class TreeBrush implements Listener {
                 || (event.getAction() != Action.RIGHT_CLICK_AIR && event.getAction() != Action.RIGHT_CLICK_BLOCK)) {
             return;
         }
-        String type = boundType(event.getItem());
-        if (type == null) {
+        String selection = boundType(event.getItem());
+        if (selection == null) {
             return;
         }
         event.setUseInteractedBlock(Event.Result.DENY);
@@ -84,12 +87,15 @@ final class TreeBrush implements Listener {
             return;
         }
 
-        Clipboard clipboard = schematics.pick(type);
+        TreeArchive.Entry entry = TreeSelection.parse(selection).pick(archive.entries());
+        Clipboard clipboard = entry == null ? null : archive.clipboard(entry);
         if (clipboard == null) {
-            player.sendActionBar(Component.text("Tree type '" + type + "' has no schematics.", NamedTextColor.RED));
+            player.sendActionBar(Component.text("No archived tree matches '" + selection + "'.",
+                    NamedTextColor.RED));
             return;
         }
-        Block target = player.getTargetBlockExact(schematics.brushRange(), FluidCollisionMode.NEVER);
+        Block target = player.getTargetBlockExact(
+                Math.max(1, plugin.getConfig().getInt("brush-range", 256)), FluidCollisionMode.NEVER);
         if (target == null) {
             player.sendActionBar(Component.text("No block in range.", NamedTextColor.RED));
             return;
@@ -101,7 +107,7 @@ final class TreeBrush implements Listener {
             player.sendActionBar(Component.text("A sapling could not grow there.", NamedTextColor.RED));
             return;
         }
-        if (!paster.paste(type, clipboard, base, player)) {
+        if (!paster.paste(entry.type(), clipboard, base, player)) {
             player.sendActionBar(Component.text("The tree would collide with blocks there.", NamedTextColor.RED));
         }
     }

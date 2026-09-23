@@ -7,15 +7,15 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 public final class BountyfulWookwork extends JavaPlugin {
 
-    private TreeSchematics schematics;
+    private TreeArchive archive;
     private TreeFelling felling;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
 
-        schematics = new TreeSchematics(this);
-        schematics.reload();
+        archive = new TreeArchive(this);
+        archive.reload();
 
         TreeRegistry registry = new TreeRegistry(this);
         registry.indexLoadedChunks();
@@ -23,24 +23,22 @@ public final class BountyfulWookwork extends JavaPlugin {
         felling = new TreeFelling(this, registry);
         felling.reload();
 
-        TreePaster paster = new TreePaster(schematics, registry);
-        TreeBrush brush = new TreeBrush(this, schematics, paster);
+        TreePaster paster = new TreePaster(this, registry);
+        TreeBrush brush = new TreeBrush(this, archive, paster);
 
         PluginManager plugins = getServer().getPluginManager();
         plugins.registerEvents(registry, this);
         plugins.registerEvents(felling, this);
-        plugins.registerEvents(new TreeGrowListener(this, schematics, paster), this);
+        plugins.registerEvents(new TreeGrowListener(this, archive, paster), this);
         plugins.registerEvents(brush, this);
 
-        DebugGeneration debug = new DebugGeneration(this, schematics, paster);
+        DebugGeneration debug = new DebugGeneration(this, archive, paster);
         plugins.registerEvents(debug, this);
 
-        TreeArchive archive = new TreeArchive(this);
-        archive.reload();
         TrunkPosCommand trunkPos = new TrunkPosCommand();
         Objects.requireNonNull(getCommand("/trunkpos")).setExecutor(trunkPos);
 
-        WookworkCommand command = new WookworkCommand(schematics, felling, brush, debug,
+        WookworkCommand command = new WookworkCommand(felling, brush, debug,
                 archive, new TreeLayout(this, archive, paster), new TreeForest(this, archive, paster),
                 new TreeDuplicates(this, archive), trunkPos);
         PluginCommand bw = Objects.requireNonNull(getCommand("bw"));
@@ -53,8 +51,8 @@ public final class BountyfulWookwork extends JavaPlugin {
         if (felling != null) {
             felling.removeAllSlowdowns();
         }
-        if (schematics != null) {
-            schematics.clear();
+        if (archive != null) {
+            archive.close();
         }
     }
 }

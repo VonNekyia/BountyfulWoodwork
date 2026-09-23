@@ -23,7 +23,6 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Deque;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -68,8 +67,6 @@ final class TreeForest {
     private final Deque<List<Marker>> pending = new ArrayDeque<>();
     /** Groups whose chunk has finished loading. */
     private final Deque<List<Marker>> ready = new ArrayDeque<>();
-    /** Blueprints already read from disk, so a forest reads every tree once. */
-    private final Map<String, Clipboard> loaded = new HashMap<>();
     private int loading;
     private int placed;
     private int skipped;
@@ -92,8 +89,6 @@ final class TreeForest {
         pending.clear();
         ready.clear();
         loading = 0;
-        loaded.values().forEach(Clipboard::close);
-        loaded.clear();
     }
 
     File folder() {
@@ -256,7 +251,7 @@ final class TreeForest {
             skipped++;
             return;
         }
-        Clipboard clipboard = loaded.computeIfAbsent(entry.id(), ignored -> archive.load(entry));
+        Clipboard clipboard = archive.clipboard(entry);
         if (clipboard == null) {
             skipped++;
             return;
@@ -271,7 +266,7 @@ final class TreeForest {
             skipped++;
             return;
         }
-        if (paster.paste(entry.id(), clipboard, base, null)) {
+        if (paster.paste(entry.type(), clipboard, base, null)) {
             placed++;
         } else {
             skipped++;

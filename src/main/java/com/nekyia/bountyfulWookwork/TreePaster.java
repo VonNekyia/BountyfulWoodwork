@@ -20,20 +20,24 @@ import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.java.JavaPlugin;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Places tree schematics into the world and registers them as trees. Trees never take
- * priority over what is already there: the trunk needs free space or the tree is not
- * placed at all, and leaves only fill air.
+ * priority over what is already there, with one exception: what is soft may go. The
+ * body of the tree - logs, wood, anything built - needs room, or the tree is not placed
+ * at all; room being air, leaves, grass, flowers and the like. The soft parts of the
+ * tree itself - its leaves, the grass and vines around its foot - take only such soft
+ * spots and are left out wherever something firmer stands.
  */
 final class TreePaster {
 
-    private final TreeSchematics schematics;
+    private final JavaPlugin plugin;
     private final TreeRegistry registry;
 
-    TreePaster(TreeSchematics schematics, TreeRegistry registry) {
-        this.schematics = schematics;
+    TreePaster(JavaPlugin plugin, TreeRegistry registry) {
+        this.plugin = plugin;
         this.registry = registry;
     }
 
@@ -90,10 +94,10 @@ final class TreePaster {
      */
     private @Nullable List<Placement> plan(Clipboard clipboard, Block base, boolean intoTrees) {
         AffineTransform transform = new AffineTransform();
-        if (schematics.randomRotation()) {
+        if (plugin.getConfig().getBoolean("random-rotation", true)) {
             transform = transform.rotateY(90 * ThreadLocalRandom.current().nextInt(4));
         }
-        boolean overwrite = schematics.overwriteBlocks();
+        boolean overwrite = plugin.getConfig().getBoolean("overwrite-blocks", false);
 
         World world = base.getWorld();
         BlockVector3 origin = clipboard.getOrigin();
@@ -105,7 +109,8 @@ final class TreePaster {
             if (block.getBlockType().getMaterial().isAir()) {
                 continue;
             }
-            boolean leaves = block.getBlockType().id().endsWith("_leaves");
+            // Soft parts yield; the body has to fit.
+            boolean leaves = soft(BukkitAdapter.adapt(block.getBlockType()));
 
             // Rotating by quarter turns leaves tiny floating point errors, hence the rounding.
             Vector3 offset = transform.apply(position.subtract(origin).toVector3());
@@ -120,14 +125,12 @@ final class TreePaster {
             }
 
             Block target = world.getBlockAt(x, y, z);
-            if (!overwrite) {
-                boolean free = intoTrees && isTree(target);
-                if (leaves && !free && !target.isEmpty()) {
+            if (!overwrite && !canHoldTrunk(target)
+                    && !(intoTrees && Tag.LOGS.isTagged(target.getType()))) {
+                if (leaves) {
                     continue;
                 }
-                if (!leaves && !free && !canHoldTrunk(target)) {
-                    return null;
-                }
+                return null;
             }
 
             BaseBlock rotated = BlockTransformExtent.transform(block, transform);
@@ -142,18 +145,17 @@ final class TreePaster {
         return placements;
     }
 
-    /**
-     * Whether a trunk block may go here: air, a sapling, or a plant a sapling could be
-     * planted over, like grass or flowers. Liquids and everything solid block it.
-     */
-    /** Whether this is part of some tree: a log or leaves. */
-    private static boolean isTree(Block block) {
-        return Tag.LOGS.isTagged(block.getType()) || Tag.LEAVES.isTagged(block.getType());
+    /** What a tree may grow over: air, leaves, or a plant. Liquids and anything firm stop it. */
+    static boolean canHoldTrunk(Block block) {
+        return !block.isLiquid() && soft(block.getType());
     }
 
-    static boolean canHoldTrunk(Block block) {
-        return block.isEmpty()
-                || Tag.SAPLINGS.isTagged(block.getType())
-                || (block.isReplaceable() && !block.isLiquid());
+    /** Air, leaves, or a plant - the parts of a tree that give way, and what gives way to a tree. */
+    static boolean soft(Material material) {
+        return material.isAir()
+                || Tag.LEAVES.isTagged(material)
+                || Tag.SAPLINGS.isTagged(material)
+                || Tag.FLOWERS.isTagged(material)
+                || Tag.REPLACEABLE.isTagged(material);
     }
 }

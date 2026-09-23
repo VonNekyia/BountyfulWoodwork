@@ -21,9 +21,9 @@ import org.bukkit.scheduler.BukkitTask;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Debug helper for looking at whole forests: while a tree type is set, the vanilla
- * trees of newly generated chunks are torn out and replaced by random schematics of
- * that type. Chunks that already exist are left alone, so fly into fresh land to see it.
+ * Debug helper for looking at whole forests: while a selection is set - written like
+ * /bw layout terrain takes it - the vanilla trees of newly generated chunks are torn
+ * out and replaced by archived trees from it. Chunks that already exist are left alone, so fly into fresh land to see it.
  *
  * <p>The work is split in two. Clearing a chunk is cheap and happens early, so no
  * vanilla tree is left standing; the trunk positions then wait in a queue and the trees
@@ -43,7 +43,7 @@ final class DebugGeneration implements Listener {
     private static final int MAX_PENDING_TRUNKS = 4096;
 
     private final JavaPlugin plugin;
-    private final TreeSchematics schematics;
+    private final TreeArchive archive;
     private final TreePaster paster;
 
     private final Deque<Chunk> pendingChunks = new ArrayDeque<>();
@@ -62,9 +62,9 @@ final class DebugGeneration implements Listener {
     private int dropped;
     private int reported;
 
-    DebugGeneration(JavaPlugin plugin, TreeSchematics schematics, TreePaster paster) {
+    DebugGeneration(JavaPlugin plugin, TreeArchive archive, TreePaster paster) {
         this.plugin = plugin;
-        this.schematics = schematics;
+        this.archive = archive;
         this.paster = paster;
     }
 
@@ -193,11 +193,12 @@ final class DebugGeneration implements Listener {
         pendingTrunks.add(trunk);
     }
 
-    private void place(String treeType, Block trunk) {
-        Clipboard clipboard = schematics.pick(treeType);
+    private void place(String selection, Block trunk) {
+        TreeArchive.Entry entry = TreeSelection.parse(selection).pick(archive.entries());
+        Clipboard clipboard = entry == null ? null : archive.clipboard(entry);
         // Grows through leaves and logs, and stays unregistered: neighbouring trees are
         // still standing, and this is only meant to be looked at.
-        if (clipboard != null && paster.paste(treeType, clipboard, trunk, null, true, false)) {
+        if (clipboard != null && paster.paste(entry.type(), clipboard, trunk, null, true, false)) {
             replaced++;
         } else {
             blocked++;
