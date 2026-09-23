@@ -1,16 +1,16 @@
 [versions]
 paper-api = "26.3.build.38-alpha"
 minecraft = "26.3"
-# The server runs 2.15.4; Maven Central stops at 2.15.3, which has the same API.
-fawe = "2.15.3"
+# The API only; the server runs a newer 7.4.x build (FastAsyncWorldEdit would provide it too).
+worldedit = "7.4.0"
 
 paperweight-userdev = "2.0.0-beta.23"
 shadow = "9.6.1"
 run-task = "3.1.0"
 
 [libraries]
-fawe-core = { module = "com.fastasyncworldedit:FastAsyncWorldEdit-Core", version.ref = "fawe" }
-fawe-bukkit = { module = "com.fastasyncworldedit:FastAsyncWorldEdit-Bukkit", version.ref = "fawe" }
+worldedit-core = { module = "com.sk89q.worldedit:worldedit-core", version.ref = "worldedit" }
+worldedit-bukkit = { module = "com.sk89q.worldedit:worldedit-bukkit", version.ref = "worldedit" }
 
 [plugins]
 paperweight-userdev = { id = "io.papermc.paperweight.userdev", version.ref = "paperweight-userdev" }

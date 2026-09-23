@@ -14,6 +14,7 @@ import com.sk89q.worldedit.function.operation.Operations;
 import com.sk89q.worldedit.math.BlockVector3;
 import com.sk89q.worldedit.regions.CuboidRegion;
 import com.sk89q.worldedit.regions.Region;
+import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -173,10 +174,24 @@ final class TreeArchive {
         return cache.computeIfAbsent(entry.id(), ignored -> load(entry));
     }
 
-    /** Lets go of every kept blueprint; FAWE may back them with files on disk. */
+    /** Lets go of every kept blueprint. */
     void close() {
-        cache.values().forEach(Clipboard::close);
+        cache.values().forEach(TreeArchive::release);
         cache.clear();
+    }
+
+    /**
+     * Lets go of one blueprint. FastAsyncWorldEdit may back it with a file on disk and
+     * wants it closed; plain WorldEdit keeps it in memory and has nothing to close.
+     */
+    static void release(@Nullable Clipboard clipboard) {
+        if (clipboard instanceof Closeable closeable) {
+            try {
+                closeable.close();
+            } catch (IOException ignored) {
+                // The blueprint is going either way.
+            }
+        }
     }
 
     /** Rereads config.yml, the categories and every yml in the archive. */
@@ -335,10 +350,7 @@ final class TreeArchive {
         String id = replacing != null && replacing.id().matches(Pattern.quote(base) + "_\\d+")
                 ? replacing.id() : freeId(base);
         if (replacing != null) {
-            Clipboard kept = cache.remove(replacing.id());
-            if (kept != null) {
-                kept.close();
-            }
+            release(cache.remove(replacing.id()));
         }
         try {
             ForwardExtentCopy copy = new ForwardExtentCopy(world, box, clipboard, min);
@@ -387,7 +399,7 @@ final class TreeArchive {
             entries = List.copyOf(updated);
             return entry;
         } finally {
-            clipboard.close();
+            release(clipboard);
         }
     }
 

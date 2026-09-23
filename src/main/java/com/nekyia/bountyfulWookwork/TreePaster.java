@@ -2,6 +2,7 @@ package com.nekyia.bountyfulWookwork;
 
 import com.sk89q.worldedit.EditSession;
 import com.sk89q.worldedit.WorldEdit;
+import com.sk89q.worldedit.WorldEditException;
 import com.sk89q.worldedit.bukkit.BukkitAdapter;
 import com.sk89q.worldedit.extent.clipboard.Clipboard;
 import com.sk89q.worldedit.extent.transform.BlockTransformExtent;
@@ -72,7 +73,7 @@ final class TreePaster {
         Map<Long, Material> blocks = register ? new HashMap<>() : Map.of();
         try (EditSession session = WorldEdit.getInstance().newEditSession(BukkitAdapter.adapt(world))) {
             for (Placement placement : placements) {
-                session.setBlock(placement.x(), placement.y(), placement.z(), placement.block());
+                session.setBlock(BlockVector3.at(placement.x(), placement.y(), placement.z()), placement.block());
                 if (register) {
                     blocks.put(BlockKeys.of(placement.x(), placement.y(), placement.z()),
                             BukkitAdapter.adapt(placement.block().getBlockType()));
@@ -81,6 +82,9 @@ final class TreePaster {
             if (player != null) {
                 WorldEdit.getInstance().getSessionManager().get(BukkitAdapter.adapt(player)).remember(session);
             }
+        } catch (WorldEditException e) {
+            plugin.getLogger().warning("Could not place a " + type + " tree: " + e.getMessage());
+            return false;
         }
         if (register) {
             registry.register(world, type, blocks);

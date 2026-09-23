@@ -198,7 +198,7 @@ final class TreeLayout {
                     boolean centre = dx == middle && dz == middle;
                     // Three by three tiles, so the pattern reads as a board, not as noise.
                     boolean light = ((dx / 3) + (dz / 3)) % 2 == 0;
-                    session.setBlock(job.x() + dx, floorY, job.z() + dz,
+                    session.setBlock(BlockVector3.at(job.x() + dx, floorY, job.z() + dz),
                             block(centre ? Material.RED_TERRACOTTA
                                     : light ? Material.LIGHT_GRAY_TERRACOTTA : Material.CYAN_TERRACOTTA));
                 }

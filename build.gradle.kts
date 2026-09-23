@@ -7,6 +7,7 @@ plugins {
 
 repositories {
     mavenCentral()
+    maven("https://maven.enginehub.org/repo/")
 }
 
 // The main server's plugin folder, which is also where the compile-only plugin jars
@@ -26,10 +27,10 @@ val buildServerPluginFolder: Provider<Directory> =
 dependencies {
     paperweight.paperDevBundle(libs.versions.paper.api.get())
 
-    // Provided by the FastAsyncWorldEdit plugin at runtime. Its transitive libraries
+    // Provided by the WorldEdit plugin at runtime. Its transitive libraries
     // clash with the dev bundle's and none of them are needed to compile against it.
-    compileOnly(libs.fawe.core) { isTransitive = false }
-    compileOnly(libs.fawe.bukkit) { isTransitive = false }
+    compileOnly(libs.worldedit.core) { isTransitive = false }
+    compileOnly(libs.worldedit.bukkit) { isTransitive = false }
 
     // Nexo is optional at runtime (only for Nexo item drops). Its API comes from the
     // jar deployed alongside us in the test server.

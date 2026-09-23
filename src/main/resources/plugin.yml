@@ -4,7 +4,7 @@ version: '${version}'
 main: com.nekyia.bountyfulWookwork.BountyfulWookwork
 api-version: '26.3'
 load: POSTWORLD
-depend: [ FastAsyncWorldEdit ]
+depend: [ WorldEdit ]
 softdepend: [ Nexo ]
 
 authors: [ gerryxn ]

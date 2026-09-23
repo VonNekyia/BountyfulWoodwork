@@ -130,7 +130,7 @@ final class TreeForest {
                 writer.write(clipboard);
             }
         } finally {
-            clipboard.close();
+            TreeArchive.release(clipboard);
         }
     }
 
@@ -156,20 +156,24 @@ final class TreeForest {
         ClipboardFormat format = ClipboardFormats.findByFile(file);
         List<Marker> found = new ArrayList<>();
         try (InputStream in = new FileInputStream(file);
-             ClipboardReader reader = format.getReader(in);
-             Clipboard clipboard = reader.read()) {
-            Region region = clipboard.getRegion();
-            BlockVector3 min = region.getMinimumPoint();
-            BlockVector3 max = region.getMaximumPoint();
-            // The middle of the pattern lands on the middle of the map.
-            int offsetX = centreX - Math.floorDiv(min.x() + max.x(), 2);
-            int offsetZ = centreZ - Math.floorDiv(min.z() + max.z(), 2);
-            for (BlockVector3 position : region) {
-                Material material = BukkitAdapter.adapt(clipboard.getBlock(position).getBlockType());
-                String filter = markers.get(material);
-                if (filter != null) {
-                    found.add(new Marker(position.x() + offsetX, position.z() + offsetZ, filter));
+             ClipboardReader reader = format.getReader(in)) {
+            Clipboard clipboard = reader.read();
+            try {
+                Region region = clipboard.getRegion();
+                BlockVector3 min = region.getMinimumPoint();
+                BlockVector3 max = region.getMaximumPoint();
+                // The middle of the pattern lands on the middle of the map.
+                int offsetX = centreX - Math.floorDiv(min.x() + max.x(), 2);
+                int offsetZ = centreZ - Math.floorDiv(min.z() + max.z(), 2);
+                for (BlockVector3 position : region) {
+                    Material material = BukkitAdapter.adapt(clipboard.getBlock(position).getBlockType());
+                    String filter = markers.get(material);
+                    if (filter != null) {
+                        found.add(new Marker(position.x() + offsetX, position.z() + offsetZ, filter));
+                    }
                 }
+            } finally {
+                TreeArchive.release(clipboard);
             }
         } catch (IOException e) {
             player.sendMessage(Component.text("Could not read the preset: " + e.getMessage(),

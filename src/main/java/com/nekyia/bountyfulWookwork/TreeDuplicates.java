@@ -175,7 +175,7 @@ final class TreeDuplicates {
             }
             return smallest;
         } finally {
-            clipboard.close();
+            TreeArchive.release(clipboard);
         }
     }
 
