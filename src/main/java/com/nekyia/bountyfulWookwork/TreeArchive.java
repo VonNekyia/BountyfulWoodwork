@@ -21,10 +21,15 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.function.Predicate;
+import java.util.regex.Pattern;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
@@ -72,6 +77,8 @@ final class TreeArchive {
 
     private List<Category> categories = DEFAULTS;
     private List<Entry> entries = List.of();
+    /** Blueprints read so far, so placing a tree does not read its file every time. */
+    private final Map<String, Clipboard> cache = new HashMap<>();
 
     TreeArchive(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -123,8 +130,59 @@ final class TreeArchive {
         return null;
     }
 
-    /** Rereads the categories and every yml in the archive. */
+    /** The file the tree types live in; editable by hand. */
+    private File typeFile() {
+        return new File(plugin.getDataFolder(), "types.yml");
+    }
+
+    /** Every tree type: the ones made with /bw type, and any an archived tree carries. */
+    Set<String> types() {
+        Set<String> types = new TreeSet<>(YamlConfiguration.loadConfiguration(typeFile()).getStringList("types"));
+        entries.forEach(entry -> types.add(entry.type()));
+        return types;
+    }
+
+    boolean hasType(String type) {
+        return types().contains(type.toLowerCase(Locale.ROOT));
+    }
+
+    /** Adds a tree type; false when it is already there. */
+    boolean createType(String type) throws IOException {
+        return !hasType(type) && editTypes(types -> types.add(type));
+    }
+
+    /** Drops a tree type again; false while an archived tree still is one. */
+    boolean removeType(String type) throws IOException {
+        return entries.stream().noneMatch(entry -> entry.type().equals(type))
+                && editTypes(types -> types.remove(type));
+    }
+
+    private boolean editTypes(Predicate<List<String>> edit) throws IOException {
+        YamlConfiguration file = YamlConfiguration.loadConfiguration(typeFile());
+        List<String> types = new ArrayList<>(file.getStringList("types"));
+        if (!edit.test(types)) {
+            return false;
+        }
+        file.set("types", types.stream().sorted().toList());
+        file.save(typeFile());
+        return true;
+    }
+
+    /** An entry's blueprint, read once and kept. Null when it cannot be read. */
+    @Nullable Clipboard clipboard(Entry entry) {
+        return cache.computeIfAbsent(entry.id(), ignored -> load(entry));
+    }
+
+    /** Lets go of every kept blueprint; FAWE may back them with files on disk. */
+    void close() {
+        cache.values().forEach(Clipboard::close);
+        cache.clear();
+    }
+
+    /** Rereads config.yml, the categories and every yml in the archive. */
     int reload() {
+        plugin.reloadConfig();
+        close();
         List<Category> read = new ArrayList<>();
         for (Map<?, ?> raw : plugin.getConfig().getMapList("categories")) {
             if (raw.get("name") instanceof String name && raw.get("plot-size") instanceof Number plot) {
@@ -187,7 +245,7 @@ final class TreeArchive {
      * @return the tree under its new name
      */
     Entry refile(Entry entry, String type, Category category, Creator creator) throws IOException {
-        String id = freeId(type, category, creator);
+        String id = freeId(baseId(type, category, creator));
         File schematic = new File(folder(), id + ".schem");
         if (!entry.schematic().renameTo(schematic)) {
             throw new IOException("could not rename " + entry.schematic().getName());
@@ -256,10 +314,12 @@ final class TreeArchive {
      * Copies the selection into the archive, with the origin on the trunk block.
      *
      * @param size the category to file it under, instead of the one its size asks for
+     * @param replacing an archived tree this one takes the place of; it keeps its name
+     *                  when type, size and creator stay the same, and is gone either way
      * @return the entry that was written
      */
-    Entry archive(Player player, String type, Creator creator, Region region,
-                  BlockVector3 trunk, @Nullable Category size) throws WorldEditException, IOException {
+    Entry archive(Player player, String type, Creator creator, Region region, BlockVector3 trunk,
+                  @Nullable Category size, @Nullable Entry replacing) throws WorldEditException, IOException {
         com.sk89q.worldedit.world.World world = BukkitAdapter.adapt(player.getWorld());
         BlockVector3 min = region.getMinimumPoint();
         BlockVector3 max = region.getMaximumPoint();
@@ -271,7 +331,15 @@ final class TreeArchive {
 
         CuboidRegion box = new CuboidRegion(world, min, max);
         Clipboard clipboard = new BlockArrayClipboard(box);
-        String id = freeId(type, category, creator);
+        String base = baseId(type, category, creator);
+        String id = replacing != null && replacing.id().matches(Pattern.quote(base) + "_\\d+")
+                ? replacing.id() : freeId(base);
+        if (replacing != null) {
+            Clipboard kept = cache.remove(replacing.id());
+            if (kept != null) {
+                kept.close();
+            }
+        }
         try {
             ForwardExtentCopy copy = new ForwardExtentCopy(world, box, clipboard, min);
             copy.setCopyingEntities(false);
@@ -307,6 +375,14 @@ final class TreeArchive {
 
             Entry entry = new Entry(id, type, creator, category.name(), width, height, length, schematic);
             List<Entry> updated = new ArrayList<>(entries);
+            if (replacing != null) {
+                updated.remove(replacing);
+                // Under a new name the old files would stay behind as a second tree.
+                if (!id.equals(replacing.id())) {
+                    replacing.schematic().delete();
+                    new File(folder(), replacing.id() + ".yml").delete();
+                }
+            }
             updated.add(entry);
             entries = List.copyOf(updated);
             return entry;
@@ -355,14 +431,18 @@ final class TreeArchive {
      * it is - birch_medium_snifferish_1. Counting up from one leaves whatever is already
      * in the archive alone, so archiving never overwrites.
      */
-    private String freeId(String type, Category category, Creator creator) {
-        String base = slug(type) + "_" + slug(category.name()) + "_" + slug(creator.name());
+    private String freeId(String base) {
         for (int number = 1; ; number++) {
             String id = base + "_" + number;
             if (!new File(folder(), id + ".schem").exists()) {
                 return id;
             }
         }
+    }
+
+    /** A tree's name without its number: type_size_creator. */
+    private static String baseId(String type, Category category, Creator creator) {
+        return slug(type) + "_" + slug(category.name()) + "_" + slug(creator.name());
     }
 
     /** A word fit for a file name: lowercase, with underscores for anything else. */

@@ -13,7 +13,11 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.world.StructureGrowEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
-/** Grows schematic trees in place of the vanilla trees saplings would grow into. */
+/**
+ * Grows archived trees in place of the vanilla trees saplings would grow into. Which
+ * ones is set per vanilla tree under {@code trees} in config.yml, written like
+ * /bw layout terrain takes them.
+ */
 final class TreeGrowListener implements Listener {
 
     /** Trees that grow from a 2x2 of saplings rather than a single one. */
@@ -22,21 +26,23 @@ final class TreeGrowListener implements Listener {
             TreeType.DARK_OAK, TreeType.PALE_OAK, TreeType.PALE_OAK_CREAKING);
 
     private final JavaPlugin plugin;
-    private final TreeSchematics schematics;
+    private final TreeArchive archive;
     private final TreePaster paster;
 
-    TreeGrowListener(JavaPlugin plugin, TreeSchematics schematics, TreePaster paster) {
+    TreeGrowListener(JavaPlugin plugin, TreeArchive archive, TreePaster paster) {
         this.plugin = plugin;
-        this.schematics = schematics;
+        this.archive = archive;
         this.paster = paster;
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onStructureGrow(StructureGrowEvent event) {
         TreeType species = event.getSpecies();
-        String type = schematics.typeFor(species);
-        Clipboard clipboard = type == null ? null : schematics.pick(type);
-        if (type == null || clipboard == null) {
+        String selection = plugin.getConfig().getString("trees." + species.name());
+        TreeArchive.Entry entry = selection == null ? null
+                : TreeSelection.parse(selection).pick(archive.entries());
+        Clipboard clipboard = entry == null ? null : archive.clipboard(entry);
+        if (clipboard == null) {
             return;
         }
         event.setCancelled(true);
@@ -53,7 +59,7 @@ final class TreeGrowListener implements Listener {
 
             // Saplings count as space a tree may grow into, so they are only removed
             // once the tree fits; one that would collide leaves its sapling as it was.
-            if (!paster.paste(type, clipboard, saplings.getFirst(), null)) {
+            if (!paster.paste(entry.type(), clipboard, saplings.getFirst(), null)) {
                 return;
             }
             for (Block block : saplings) {

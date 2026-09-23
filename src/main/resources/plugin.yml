@@ -11,8 +11,8 @@ authors: [ gerryxn ]
 
 commands:
   bw:
-    description: Reloads tree types or binds a tree brush to the held item.
-    usage: /bw reload | /bw brush <type|clear> | /bw debug generation <type|off> | /bw type [name|remove <name>] | /bw trunkpos | /bw archive <type> <creator> [--size <category>] | /bw list [type|size|creator] | /bw duplicates | /bw resort <tree> <size> | /bw recreator <tree> <creator> | /bw patreon <name> <link> | /bw layout <categorized|terrain> [trees] | /bw forest <preset> [x z]
+    description: Archives tree blueprints and puts them into the world.
+    usage: /bw reload | /bw brush <trees|clear> | /bw debug generation <trees|off> | /bw type [name|remove <name>] | /bw trunkpos | /bw archive <type> <creator> [--size <category>] [--overwrite <tree>] | /bw list [type|size|creator] | /bw duplicates | /bw resort <tree> <size> | /bw recreator <tree> <creator> | /bw patreon <name> <link> | /bw layout <categorized|terrain> [trees] | /bw forest <preset> [x z]
     aliases: [ wookwork ]
     permission: bountyfulwookwork.admin
   "/trunkpos":

@@ -1,19 +1,15 @@
-# Tree types are the folders under plugins/BountyfulWookwork/schematics/. Every
-# folder is its own tree type, named after the folder, and holds that type's .schem
-# files. Add a folder and run /bw reload to add a type.
-#
-# Making a schematic: stand on the spot where the sapling would be (the bottom block
-# of the trunk; for 2x2 trees the north-west trunk block), select the tree, then
-# //copy and //schem save <name>. Move the file into its type's folder and run
-# /bw reload.
+# Every tree this plugin places comes from the archive (see below). Wherever trees are
+# chosen - /bw brush, /bw layout, /bw debug generation and saplings under 'trees' - they
+# are written the way WorldEdit writes blocks: birch, birch,oak or 70%birch,30%oak. A
+# word may be a tree type, a size, a creator or a piece of a tree's name.
 
 # Rotate each pasted tree by a random multiple of 90 degrees.
 random-rotation: true
 
 # false: trees never replace existing blocks. A tree only grows or is placed if its
-# trunk (everything but leaves) lands on air, saplings or plants like grass and
-# flowers; otherwise nothing happens and the sapling stays. Leaves only fill air.
-# true: no checks, the schematic overwrites whatever is in the way.
+# body lands on air, leaves, saplings or plants like grass and flowers; otherwise
+# nothing happens and the sapling stays. Leaves, grass and vines of the tree itself
+# only go where such soft blocks are. true: no checks, the tree overwrites everything.
 #
 # Either way, where the bottom of a trunk hangs over air it reaches one block down.
 overwrite-blocks: false
@@ -34,7 +30,7 @@ felling:
   max-seconds: 30
   # The leaves of a felled tree disappear at random within this many ticks.
   leaf-decay-ticks: 40
-  # What a felled tree drops, per tree type (schematic folder); "default" covers every
+  # What a felled tree drops, per tree type; "default" covers every
   # type without its own list. item: a vanilla item like spruce_log, or a Nexo item as
   # nexo:<id>. per-block: amount per trunk block (everything but leaves), so 0.25 is
   # one item for every four trunk blocks.
@@ -75,17 +71,17 @@ felling:
       - item: nexo:hardwood
         per-block: 0.001
 
-# Vanilla tree type -> tree type (schematic folder) that grows in its place when a
-# sapling grows. Vanilla types left out, or mapped to a folder with no schematics,
-# grow vanilla trees. Several vanilla types may share a tree type.
+# Vanilla tree -> the archived trees that grow in its place when a sapling grows,
+# written like everywhere else: BIRCH: birch, or TREE: 80%oak,20%birch. Vanilla trees
+# left out, or whose trees match nothing in the archive, grow as vanilla.
 #
 # Vanilla types: TREE, BIG_TREE, SWAMP, BIRCH, TALL_BIRCH, REDWOOD, TALL_REDWOOD,
 # MEGA_REDWOOD, MEGA_PINE, SMALL_JUNGLE, COCOA_TREE, JUNGLE, ACACIA, DARK_OAK,
 # CHERRY, MANGROVE, TALL_MANGROVE, PALE_OAK, PALE_OAK_CREAKING, AZALEA,
 # CRIMSON_FUNGUS, WARPED_FUNGUS, RED_MUSHROOM, BROWN_MUSHROOM
 trees: {}
-#  TREE: small_oak
-#  BIG_TREE: large_oak
+#  TREE: 80%oak,20%birch
+#  BIG_TREE: oak_large,oak_giant
 #  BIRCH: birch
 
 # /bw debug generation replaces the trees of newly generated chunks, to look at whole
@@ -98,8 +94,8 @@ debug-generation:
   trees-per-chunk: 16
 
 # Archiving a tree: select it with //pos1 and //pos2, mark the block it stands on with
-# //trunkpos or /bw trunkpos, then /bw archive <type> <creator>. The type is one of the tree types,
-# made with /bw type <name>; a type is a folder under schematics. The tree names itself
+# //trunkpos or /bw trunkpos, then /bw archive <type> <creator>. The type is one of the
+# tree types made with /bw type <name>, kept in types.yml. The tree names itself
 # type_size_creator_number, like birch_medium_snifferish_1, and its schematic and a yml
 # with type, creator, origin and size land in the archive folder. The creator
 # is either a player, kept by uuid, or an artist registered once with

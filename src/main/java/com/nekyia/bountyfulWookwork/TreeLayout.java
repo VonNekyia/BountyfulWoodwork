@@ -16,10 +16,8 @@ import com.sk89q.worldedit.world.block.BlockTypes;
 import java.util.ArrayDeque;
 import java.util.Comparator;
 import java.util.Deque;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.function.LongConsumer;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -73,8 +71,6 @@ final class TreeLayout {
     private final TreePaster paster;
 
     private @Nullable BukkitTask task;
-    /** Blueprints already read from disk, so one run reads every tree once. */
-    private final Map<String, Clipboard> loaded = new HashMap<>();
 
     TreeLayout(JavaPlugin plugin, TreeArchive archive, TreePaster paster) {
         this.plugin = plugin;
@@ -91,8 +87,6 @@ final class TreeLayout {
             task.cancel();
             task = null;
         }
-        loaded.values().forEach(Clipboard::close);
-        loaded.clear();
     }
 
     /** The ways /bw layout can lay the archive out. */
@@ -183,7 +177,7 @@ final class TreeLayout {
 
     /** Clears the plot, floors it with the checkerboard and puts the tree on the middle. */
     private boolean place(World world, Job job, int floorY) {
-        Clipboard clipboard = blueprint(job.entry());
+        Clipboard clipboard = archive.clipboard(job.entry());
         if (clipboard == null) {
             return false;
         }
@@ -341,14 +335,14 @@ final class TreeLayout {
         if (entry == null) {
             return false;
         }
-        Clipboard clipboard = blueprint(entry);
+        Clipboard clipboard = archive.clipboard(entry);
         if (clipboard == null) {
             return false;
         }
 
         Block base = world.getBlockAt(spot.x(), spot.y(), spot.z());
         base.setType(Material.AIR, false);
-        if (paster.paste(entry.id(), clipboard, base, null)) {
+        if (paster.paste(entry.type(), clipboard, base, null)) {
             return true;
         }
         // Left standing, so it is plain to see where a tree did not fit.
@@ -363,11 +357,6 @@ final class TreeLayout {
         NamespacedKey key = NamespacedKey.fromString(name.toLowerCase(Locale.ROOT));
         World world = key == null ? null : plugin.getServer().getWorld(key);
         return world != null ? world : plugin.getServer().getWorld(name);
-    }
-
-    /** An entry's blueprint, read once per run. */
-    private @Nullable Clipboard blueprint(TreeArchive.Entry entry) {
-        return loaded.computeIfAbsent(entry.id(), ignored -> archive.load(entry));
     }
 
     /** Runs a step every tick with the configured slice of the tick to spend. */

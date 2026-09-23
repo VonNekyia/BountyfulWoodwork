@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -27,12 +28,12 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 /**
- * /bw reload - rereads config.yml and picks up new tree types and schematics.
- * /bw brush type|clear - binds the held item to a tree type, or unbinds it.
- * /bw debug generation type|off - replaces the trees of new chunks with that type.
+ * /bw reload - rereads config.yml and the archive.
+ * /bw brush trees|clear - binds the held item to archived trees, or unbinds it.
+ * /bw debug generation trees|off - replaces the trees of new chunks with archived ones.
  * /bw type [name] - lists the tree types, or makes one.
  * /bw trunkpos - marks the block a tree stands on; //trunkpos does the same.
- * /bw archive type creator [--size category] - puts a tree into the archive.
+ * /bw archive type creator [--size category] [--overwrite tree] - puts a tree into the archive.
  * /bw list [words] - names the archived trees, narrowed down by type, size or creator.
  * /bw duplicates - finds trees archived twice, turned or mirrored.
  * /bw resort tree size - files an archived tree under another size, renaming it.
@@ -43,7 +44,6 @@ import org.jspecify.annotations.Nullable;
  */
 final class WookworkCommand implements CommandExecutor, TabCompleter {
 
-    private final TreeSchematics schematics;
     private final TreeFelling felling;
     private final TreeBrush brush;
     private final DebugGeneration debug;
@@ -53,10 +53,9 @@ final class WookworkCommand implements CommandExecutor, TabCompleter {
     private final TreeDuplicates duplicates;
     private final TrunkPosCommand trunkPos;
 
-    WookworkCommand(TreeSchematics schematics, TreeFelling felling, TreeBrush brush,
+    WookworkCommand(TreeFelling felling, TreeBrush brush,
                     DebugGeneration debug, TreeArchive archive, TreeLayout layout,
                     TreeForest forest, TreeDuplicates duplicates, TrunkPosCommand trunkPos) {
-        this.schematics = schematics;
         this.felling = felling;
         this.brush = brush;
         this.debug = debug;
@@ -71,12 +70,10 @@ final class WookworkCommand implements CommandExecutor, TabCompleter {
     public boolean onCommand(@NonNull CommandSender sender, @NonNull Command command,
                              @NonNull String label, @NonNull String @NonNull [] args) {
         if (args.length == 1 && args[0].equalsIgnoreCase("reload")) {
-            int count = schematics.reload();
-            felling.reload();
             int archived = archive.reload();
-            sender.sendMessage(Component.text("Loaded " + count + " tree schematics across "
-                    + schematics.types().size() + " tree types, and " + archived + " archived trees.",
-                    NamedTextColor.GREEN));
+            felling.reload();
+            sender.sendMessage(Component.text("Loaded " + archived + " archived trees across "
+                    + archive.types().size() + " tree types.", NamedTextColor.GREEN));
             return true;
         }
         if (args.length == 1 && args[0].equalsIgnoreCase("trunkpos")) {
@@ -127,8 +124,8 @@ final class WookworkCommand implements CommandExecutor, TabCompleter {
             forest(sender, args);
             return true;
         }
-        if (args.length == 2 && args[0].equalsIgnoreCase("brush")) {
-            brush(sender, args[1]);
+        if (args.length >= 2 && args[0].equalsIgnoreCase("brush")) {
+            brush(sender, String.join("", Arrays.copyOfRange(args, 1, args.length)));
             return true;
         }
         if (args.length == 3 && args[0].equalsIgnoreCase("debug") && args[1].equalsIgnoreCase("generation")) {
@@ -138,7 +135,8 @@ final class WookworkCommand implements CommandExecutor, TabCompleter {
         return false;
     }
 
-    private void brush(CommandSender sender, String type) {
+    /** /bw brush trees|clear - trees written like /bw layout terrain takes them. */
+    private void brush(CommandSender sender, String selection) {
         if (!(sender instanceof Player player)) {
             sender.sendMessage(Component.text("Only players can hold a brush.", NamedTextColor.RED));
             return;
@@ -149,49 +147,51 @@ final class WookworkCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        if (type.equalsIgnoreCase("clear")) {
+        if (selection.equalsIgnoreCase("clear")) {
             brush.bind(item, null);
             player.sendMessage(Component.text("Removed the tree brush from this item.", NamedTextColor.GREEN));
             return;
         }
-        if (!schematics.hasType(type)) {
-            player.sendMessage(Component.text("Unknown tree type '" + type + "'. Tree types: "
-                    + String.join(", ", schematics.types()), NamedTextColor.RED));
+        String normalized = selection.toLowerCase(Locale.ROOT);
+        int matching = TreeSelection.parse(normalized).matching(archive.entries()).size();
+        if (matching == 0) {
+            player.sendMessage(Component.text("No archived tree matches '" + normalized + "'.",
+                    NamedTextColor.RED));
             return;
         }
-        String normalized = type.toLowerCase(Locale.ROOT);
         brush.bind(item, normalized);
-        player.sendMessage(Component.text("This item is now a " + normalized
-                + " tree brush. Right-click in creative to place trees.", NamedTextColor.GREEN));
+        player.sendMessage(Component.text("This item is now a brush for " + normalized + " ("
+                + matching + " trees). Right-click in creative to place them.", NamedTextColor.GREEN));
     }
 
-    /**
-     * A command line split into its plain words and the --size it may carry. The flag
-     * may stand anywhere, written as --size giant or --size=giant, so it stays out of
-     * the way of a creator name made of several words.
-     */
-    private record Parsed(String[] words, @Nullable String size) {
+    /** The flags /bw archive understands. */
+    private static final List<String> FLAGS = List.of("--size", "--overwrite");
 
-        private static final String FLAG = "--size";
+    /**
+     * A command line split into its plain words and the flags it may carry. A flag may
+     * stand anywhere, written as --size giant or --size=giant, so it stays out of the
+     * way of a creator name made of several words.
+     */
+    private record Parsed(String[] words, @Nullable String size, @Nullable String overwrite) {
 
         static Parsed of(String[] args) {
             List<String> words = new ArrayList<>();
-            String size = null;
+            Map<String, String> flags = new HashMap<>();
             for (int i = 0; i < args.length; i++) {
                 String argument = args[i];
-                if (argument.equalsIgnoreCase(FLAG) && i + 1 < args.length) {
-                    size = args[++i];
-                } else if (argument.regionMatches(true, 0, FLAG + "=", 0, FLAG.length() + 1)) {
-                    size = argument.substring(FLAG.length() + 1);
+                int equals = argument.indexOf('=');
+                String flag = (equals < 0 ? argument : argument.substring(0, equals)).toLowerCase(Locale.ROOT);
+                if (FLAGS.contains(flag) && (equals >= 0 || i + 1 < args.length)) {
+                    flags.put(flag, equals >= 0 ? argument.substring(equals + 1) : args[++i]);
                 } else {
                     words.add(argument);
                 }
             }
-            return new Parsed(words.toArray(String[]::new), size);
+            return new Parsed(words.toArray(String[]::new), flags.get("--size"), flags.get("--overwrite"));
         }
     }
 
-    /** /bw archive type creator [--size category] - puts a tree into the archive. */
+    /** /bw archive type creator [--size category] [--overwrite tree] - puts a tree into the archive. */
     private void archive(CommandSender sender, String[] rawArgs) {
         if (!(sender instanceof Player player)) {
             sender.sendMessage(Component.text("Only players can archive a tree.", NamedTextColor.RED));
@@ -201,8 +201,20 @@ final class WookworkCommand implements CommandExecutor, TabCompleter {
         String[] args = parsed.words();
         if (args.length < 3) {
             player.sendMessage(Component.text(
-                    "Usage: /bw archive <type> <creator> [--size <category>]", NamedTextColor.RED));
+                    "Usage: /bw archive <type> <creator> [--size <category>] [--overwrite <tree>]",
+                    NamedTextColor.RED));
             return;
+        }
+
+        // --overwrite puts the new blueprint in place of one already archived.
+        TreeArchive.Entry replacing = null;
+        if (parsed.overwrite() != null) {
+            replacing = archive.entry(parsed.overwrite());
+            if (replacing == null) {
+                player.sendMessage(Component.text("No archived tree called '" + parsed.overwrite()
+                        + "' to overwrite. /bw list shows them.", NamedTextColor.RED));
+                return;
+            }
         }
 
         // --size files the tree under a category its measurements would not put it in.
@@ -218,10 +230,10 @@ final class WookworkCommand implements CommandExecutor, TabCompleter {
         }
 
         String type = args[1].toLowerCase(Locale.ROOT);
-        if (!schematics.hasType(type)) {
+        if (!archive.hasType(type)) {
             player.sendMessage(Component.text("Unknown tree type '" + type
                     + "'. Make it with /bw type <name>. Tree types: "
-                    + String.join(", ", schematics.types()), NamedTextColor.RED));
+                    + String.join(", ", archive.types()), NamedTextColor.RED));
             return;
         }
         // Everything after the type is the creator, so artist names may have spaces.
@@ -251,9 +263,12 @@ final class WookworkCommand implements CommandExecutor, TabCompleter {
         }
 
         try {
-            TreeArchive.Entry entry = archive.archive(player, type, creator, region, trunk, size);
+            TreeArchive.Entry entry = archive.archive(player, type, creator, region, trunk, size, replacing);
             trunkPos.clear(player);
-            player.sendMessage(Component.text("Archived " + entry.id() + ", a " + entry.type()
+            String verb = replacing == null ? "Archived "
+                    : replacing.id().equals(entry.id()) ? "Overwrote "
+                    : "Replaced " + replacing.id() + " with ";
+            player.sendMessage(Component.text(verb + entry.id() + ", a " + entry.type()
                     + " by " + creator.name() + (creator.patreon() ? " (patreon)" : "") + ".",
                     NamedTextColor.GREEN));
 
@@ -403,7 +418,7 @@ final class WookworkCommand implements CommandExecutor, TabCompleter {
 
     /** Everything /bw list understands as a word: the types, sizes and creators in use. */
     private Stream<String> filters() {
-        return Stream.of(schematics.types().stream(),
+        return Stream.of(archive.types().stream(),
                         archive.categories().stream().map(TreeArchive.Category::name),
                         archive.entries().stream()
                                 .map(entry -> entry.creator().name().toLowerCase(Locale.ROOT)))
@@ -421,14 +436,14 @@ final class WookworkCommand implements CommandExecutor, TabCompleter {
 
     /**
      * /bw type - lists the tree types.
-     * /bw type name - makes a new one; a type is a folder, so it is there at once.
-     * /bw type remove name - drops one again while it is still empty.
+     * /bw type name - makes a new one.
+     * /bw type remove name - drops one again while no archived tree is one.
      */
     private void type(CommandSender sender, String[] args) {
         if (args.length == 1) {
-            sender.sendMessage(Component.text(schematics.types().isEmpty()
+            sender.sendMessage(Component.text(archive.types().isEmpty()
                     ? "No tree types yet. Make one with /bw type <name>."
-                    : "Tree types: " + String.join(", ", schematics.types()), NamedTextColor.GREEN));
+                    : "Tree types: " + String.join(", ", archive.types()), NamedTextColor.GREEN));
             return;
         }
 
@@ -444,28 +459,32 @@ final class WookworkCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        if (remove) {
-            if (!schematics.hasType(name)) {
-                sender.sendMessage(Component.text("There is no tree type '" + name + "'.",
-                        NamedTextColor.RED));
-            } else if (schematics.removeType(name)) {
-                sender.sendMessage(Component.text("Dropped the tree type " + name + ".",
-                        NamedTextColor.GREEN));
-            } else {
-                sender.sendMessage(Component.text("Tree type " + name
-                        + " still holds schematics; empty " + schematics.folderOf(name)
-                        + " first.", NamedTextColor.RED));
+        try {
+            if (remove) {
+                if (!archive.hasType(name)) {
+                    sender.sendMessage(Component.text("There is no tree type '" + name + "'.",
+                            NamedTextColor.RED));
+                } else if (archive.removeType(name)) {
+                    sender.sendMessage(Component.text("Dropped the tree type " + name + ".",
+                            NamedTextColor.GREEN));
+                } else {
+                    sender.sendMessage(Component.text("Archived trees are still " + name
+                            + "; /bw list " + name + " shows them.", NamedTextColor.RED));
+                }
+                return;
             }
-            return;
-        }
-        if (!schematics.createType(name)) {
-            sender.sendMessage(Component.text("Tree type " + name + " is already there.",
-                    NamedTextColor.YELLOW));
+            if (!archive.createType(name)) {
+                sender.sendMessage(Component.text("Tree type " + name + " is already there.",
+                        NamedTextColor.YELLOW));
+                return;
+            }
+        } catch (IOException e) {
+            sender.sendMessage(Component.text("Could not save the tree types: " + e.getMessage(),
+                    NamedTextColor.RED));
             return;
         }
         sender.sendMessage(Component.text("Made the tree type " + name
-                + ". Archive trees as it with /bw archive <name> " + name + " <creator>, and map a"
-                + " vanilla sapling to it under 'trees' in config.yml.", NamedTextColor.GREEN));
+                + ". Archive trees as it with /bw archive " + name + " <creator>.", NamedTextColor.GREEN));
     }
 
     /** /bw patreon name link - remembers an artist, so archiving only needs the name. */
@@ -599,7 +618,7 @@ final class WookworkCommand implements CommandExecutor, TabCompleter {
         }
     }
 
-    /** Replaces the trees of newly generated chunks with one type, to look at forests. */
+    /** Replaces the trees of newly generated chunks with archived ones, to look at forests. */
     private void generation(CommandSender sender, String type) {
         if (type.equalsIgnoreCase("off") || type.equalsIgnoreCase("none")) {
             int[] counts = debug.counts();
@@ -609,13 +628,8 @@ final class WookworkCommand implements CommandExecutor, TabCompleter {
                     + " chunks skipped.", NamedTextColor.GREEN));
             return;
         }
-        if (!schematics.hasType(type)) {
-            sender.sendMessage(Component.text("Unknown tree type '" + type + "'. Tree types: "
-                    + String.join(", ", schematics.types()), NamedTextColor.RED));
-            return;
-        }
-        if (schematics.pick(type) == null) {
-            sender.sendMessage(Component.text("Tree type '" + type + "' has no schematics in its folder.",
+        if (TreeSelection.parse(type).matching(archive.entries()).isEmpty()) {
+            sender.sendMessage(Component.text("No archived tree matches '" + type + "'.",
                     NamedTextColor.RED));
             return;
         }
@@ -633,8 +647,8 @@ final class WookworkCommand implements CommandExecutor, TabCompleter {
             case 1 -> Stream.of("reload", "brush", "debug", "type", "trunkpos", "archive", "list",
                     "duplicates", "resort", "recreator", "patreon", "layout", "forest");
             case 2 -> switch (args[0].toLowerCase(Locale.ROOT)) {
-                case "brush" -> Stream.concat(Stream.of("clear"), schematics.types().stream());
-                case "archive" -> schematics.types().stream();
+                case "brush" -> Stream.concat(Stream.of("clear"), filters());
+                case "archive" -> archive.types().stream();
                 // Only "remove": here a type is being named, usually a new one.
                 case "type" -> Stream.of("remove");
                 case "patreon" -> archive.patreons().keySet().stream();
@@ -648,10 +662,10 @@ final class WookworkCommand implements CommandExecutor, TabCompleter {
             };
             case 3 -> {
                 if (args[0].equalsIgnoreCase("debug") && args[1].equalsIgnoreCase("generation")) {
-                    yield Stream.concat(Stream.of("off"), schematics.types().stream());
+                    yield Stream.concat(Stream.of("off"), filters());
                 }
                 if (args[0].equalsIgnoreCase("type") && args[1].equalsIgnoreCase("remove")) {
-                    yield schematics.types().stream();
+                    yield archive.types().stream();
                 }
                 if (args[0].equalsIgnoreCase("list")) {
                     yield filters();
@@ -672,8 +686,10 @@ final class WookworkCommand implements CommandExecutor, TabCompleter {
         // --size may stand anywhere, so it is offered wherever it is being typed.
         if (args.length > 1 && args[args.length - 2].equalsIgnoreCase("--size")) {
             options = archive.categories().stream().map(TreeArchive.Category::name);
+        } else if (args.length > 1 && args[args.length - 2].equalsIgnoreCase("--overwrite")) {
+            options = archive.entries().stream().map(TreeArchive.Entry::id);
         } else if (args[args.length - 1].startsWith("-") && args[0].equalsIgnoreCase("archive")) {
-            options = Stream.of("--size");
+            options = FLAGS.stream();
         }
 
         String prefix = args[args.length - 1].toLowerCase(Locale.ROOT);
