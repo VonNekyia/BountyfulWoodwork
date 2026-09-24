@@ -5,7 +5,6 @@ import com.sk89q.worldedit.WorldEdit;
 import com.sk89q.worldedit.WorldEditException;
 import com.sk89q.worldedit.bukkit.BukkitAdapter;
 import com.sk89q.worldedit.extent.clipboard.Clipboard;
-import com.sk89q.worldedit.function.operation.ForwardExtentCopy;
 import com.sk89q.worldedit.function.operation.Operations;
 import com.sk89q.worldedit.math.BlockVector3;
 import com.sk89q.worldedit.regions.CuboidRegion;
@@ -17,35 +16,25 @@ import java.util.ArrayDeque;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.List;
-import java.util.Locale;
 import java.util.function.LongConsumer;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
-import org.bukkit.Chunk;
-import org.bukkit.ChunkSnapshot;
 import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
 import org.bukkit.World;
-import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The two ways to put the archive on the ground.
- *
- * <p>{@code categorized} builds a plot per tree, ordered by type, then by creator, then
+ * Puts the archive on the ground: {@code categorized} builds a plot per tree, ordered
+ * by type, then by creator, then
  * by size, so every tree of a kind stands together and one row never mixes builders.
  * Each plot is floored with a checkerboard of three by three tiles in light gray and
  * cyan terracotta, with one red block in the middle where the trunk goes.
  *
- * <p>{@code terrain} copies a piece of a prepared world - hills, water, paths, whatever
- * was built there - and turns every marker block in it into a tree. The terrain says
- * where the trees stand; the archive says what stands there.
- *
- * <p>Both take a selection like {@code birch,oak} or {@code 70%birch,30%oak}. Work is
- * spread over ticks either way, so neither stalls the server.
+ * <p>It takes a selection like {@code birch,oak} or {@code 70%birch,30%oak}. The work is
+ * spread over ticks, so it does not stall the server.
  */
 final class TreeLayout {
 
@@ -58,13 +47,7 @@ final class TreeLayout {
     private record Job(TreeArchive.Entry entry, int x, int z, int plotSize, int clearTo) {
     }
 
-    /** One square of a prepared world still to copy over, and its chunk. */
-    private record Tile(int chunkX, int chunkZ, int minX, int minZ, int maxX, int maxZ) {
-    }
 
-    /** Where a marker block stood, so a tree can take its place. */
-    private record Marker(int x, int y, int z) {
-    }
 
     private final JavaPlugin plugin;
     private final TreeArchive archive;
@@ -91,10 +74,10 @@ final class TreeLayout {
 
     /** The ways /bw layout can lay the archive out. */
     static List<String> modes() {
-        return List.of("categorized", "terrain");
+        return List.of("categorized");
     }
 
-    /** Runs one of the two layouts, or tells the player why it cannot. */
+    /** Lays the chosen trees out, or tells the player why it cannot. */
     void start(Player player, String mode, TreeSelection selection) {
         List<TreeArchive.Entry> entries = selection.matching(archive.entries());
         if (entries.isEmpty()) {
@@ -103,11 +86,7 @@ final class TreeLayout {
                     : "No archived tree matches that selection.", NamedTextColor.RED));
             return;
         }
-        if (mode.equals("terrain")) {
-            terrain(player, entries, selection);
-        } else {
-            categorized(player, entries);
-        }
+        categorized(player, entries);
     }
 
     // ---- categorized ----------------------------------------------------------------
@@ -215,149 +194,7 @@ final class TreeLayout {
         }
     }
 
-    // ---- terrain --------------------------------------------------------------------
-
-    /** Copies the prepared world over and turns its markers into trees. */
-    private void terrain(Player player, List<TreeArchive.Entry> entries, TreeSelection selection) {
-        String name = plugin.getConfig().getString("layout.terrain.world", "worlds:preset_forest");
-        World source = worldNamed(name);
-        if (source == null) {
-            player.sendMessage(Component.text("No world '" + name
-                    + "'; it has to be loaded to copy from it.", NamedTextColor.RED));
-            return;
-        }
-        World target = player.getWorld();
-        if (source.equals(target)) {
-            player.sendMessage(Component.text("You are standing in " + name
-                    + " itself; go to the map you want the forest on.", NamedTextColor.RED));
-            return;
-        }
-
-        int fromX = plugin.getConfig().getInt("layout.terrain.from-x", -150);
-        int fromZ = plugin.getConfig().getInt("layout.terrain.from-z", -150);
-        int toX = plugin.getConfig().getInt("layout.terrain.to-x", 150);
-        int toZ = plugin.getConfig().getInt("layout.terrain.to-z", 150);
-        int minY = Math.max(source.getMinHeight(), plugin.getConfig().getInt("layout.terrain.min-y", -64));
-        int maxY = Math.min(source.getMaxHeight() - 1, plugin.getConfig().getInt("layout.terrain.max-y", 160));
-        int offsetX = plugin.getConfig().getInt("layout.terrain.offset-x", 0);
-        int offsetZ = plugin.getConfig().getInt("layout.terrain.offset-z", 0);
-        Material marker = Material.matchMaterial(
-                plugin.getConfig().getString("layout.terrain.marker", "gold_block"));
-        if (marker == null) {
-            player.sendMessage(Component.text("layout.terrain.marker is not a block.",
-                    NamedTextColor.RED));
-            return;
-        }
-
-        // One tile per chunk of the source, clipped to the piece that was asked for.
-        Deque<Tile> tiles = new ArrayDeque<>();
-        for (int chunkX = Math.min(fromX, toX) >> 4; chunkX <= Math.max(fromX, toX) >> 4; chunkX++) {
-            for (int chunkZ = Math.min(fromZ, toZ) >> 4; chunkZ <= Math.max(fromZ, toZ) >> 4; chunkZ++) {
-                tiles.add(new Tile(chunkX, chunkZ,
-                        Math.max(Math.min(fromX, toX), chunkX << 4),
-                        Math.max(Math.min(fromZ, toZ), chunkZ << 4),
-                        Math.min(Math.max(fromX, toX), (chunkX << 4) + 15),
-                        Math.min(Math.max(fromZ, toZ), (chunkZ << 4) + 15)));
-            }
-        }
-
-        player.sendMessage(Component.text("Copying " + tiles.size() + " chunks of " + name
-                + " to " + (Math.min(fromX, toX) + offsetX) + ", " + (Math.min(fromZ, toZ) + offsetZ)
-                + " and planting every " + marker.name().toLowerCase(Locale.ROOT) + ".",
-                NamedTextColor.GREEN));
-
-        stop();
-        Deque<Marker> markers = new ArrayDeque<>();
-        int[] counts = {0, 0};
-        task = every(budget -> {
-            long deadline = System.nanoTime() + budget;
-            do {
-                Tile tile = tiles.poll();
-                if (tile != null) {
-                    copy(source, target, tile, minY, maxY, offsetX, offsetZ);
-                    scan(source, tile, minY, maxY, offsetX, offsetZ, marker, markers);
-                    continue;
-                }
-                // The ground is there; now the trees go on it.
-                Marker spot = markers.poll();
-                if (spot == null) {
-                    player.sendMessage(Component.text("Planted " + counts[0] + " trees; "
-                            + counts[1] + " markers had no room.", NamedTextColor.GREEN));
-                    stop();
-                    return;
-                }
-                if (plant(target, spot, marker, entries, selection)) {
-                    counts[0]++;
-                } else {
-                    counts[1]++;
-                }
-            } while (System.nanoTime() < deadline);
-        });
-    }
-
-    /** Copies one chunk-sized piece of the prepared world onto the map. */
-    private void copy(World source, World target, Tile tile, int minY, int maxY,
-                      int offsetX, int offsetZ) {
-        com.sk89q.worldedit.world.World from = BukkitAdapter.adapt(source);
-        BlockVector3 min = BlockVector3.at(tile.minX(), minY, tile.minZ());
-        Region region = new CuboidRegion(from, min, BlockVector3.at(tile.maxX(), maxY, tile.maxZ()));
-        try (EditSession session = WorldEdit.getInstance().newEditSession(BukkitAdapter.adapt(target))) {
-            ForwardExtentCopy copy = new ForwardExtentCopy(from, region, min, session,
-                    min.add(offsetX, 0, offsetZ));
-            copy.setCopyingEntities(false);
-            Operations.complete(copy);
-        } catch (WorldEditException e) {
-            plugin.getLogger().warning("Could not copy chunk " + tile.chunkX() + ", " + tile.chunkZ()
-                    + ": " + e.getMessage());
-        }
-    }
-
-    /** Remembers where the markers of one piece ended up on the map. */
-    private void scan(World source, Tile tile, int minY, int maxY, int offsetX, int offsetZ,
-                      Material marker, Deque<Marker> markers) {
-        Chunk chunk = source.getChunkAt(tile.chunkX(), tile.chunkZ());
-        ChunkSnapshot snapshot = chunk.getChunkSnapshot(false, false, false);
-        for (int x = tile.minX(); x <= tile.maxX(); x++) {
-            for (int z = tile.minZ(); z <= tile.maxZ(); z++) {
-                for (int y = minY; y <= maxY; y++) {
-                    if (snapshot.getBlockType(x & 15, y, z & 15) == marker) {
-                        markers.add(new Marker(x + offsetX, y, z + offsetZ));
-                    }
-                }
-            }
-        }
-    }
-
-    /** Puts a tree where a marker block stands, taking the marker away with it. */
-    private boolean plant(World world, Marker spot, Material marker,
-                          List<TreeArchive.Entry> entries, TreeSelection selection) {
-        TreeArchive.Entry entry = selection.pick(entries);
-        if (entry == null) {
-            return false;
-        }
-        Clipboard clipboard = archive.clipboard(entry);
-        if (clipboard == null) {
-            return false;
-        }
-
-        Block base = world.getBlockAt(spot.x(), spot.y(), spot.z());
-        base.setType(Material.AIR, false);
-        if (paster.paste(entry.type(), clipboard, base, null)) {
-            return true;
-        }
-        // Left standing, so it is plain to see where a tree did not fit.
-        base.setType(marker, false);
-        return false;
-    }
-
     // ---- shared ---------------------------------------------------------------------
-
-    /** The world by its key, like worlds:preset_forest, or by its plain name. */
-    private @Nullable World worldNamed(String name) {
-        NamespacedKey key = NamespacedKey.fromString(name.toLowerCase(Locale.ROOT));
-        World world = key == null ? null : plugin.getServer().getWorld(key);
-        return world != null ? world : plugin.getServer().getWorld(name);
-    }
 
     /** Runs a step every tick with the configured slice of the tick to spend. */
     private BukkitTask every(LongConsumer step) {

@@ -14,7 +14,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.random.RandomGenerator;
 import org.bukkit.Material;
 import org.bukkit.Tag;
 import org.bukkit.World;
@@ -43,7 +45,7 @@ final class TreePaster {
     }
 
     /** One block of the tree, rotated and at its world position. */
-    private record Placement(int x, int y, int z, BaseBlock block) {
+    record Placement(int x, int y, int z, BaseBlock block) {
     }
 
     /**
@@ -64,7 +66,8 @@ final class TreePaster {
      */
     boolean paste(String type, Clipboard clipboard, Block base, @Nullable Player player,
                   boolean intoTrees, boolean register) {
-        List<Placement> placements = plan(clipboard, base, intoTrees);
+        List<Placement> placements = plan(clipboard, base, intoTrees,
+                turns(ThreadLocalRandom.current()), Set.of());
         if (placements == null) {
             return false;
         }
@@ -92,15 +95,20 @@ final class TreePaster {
         return true;
     }
 
+    /** How many quarter turns the next tree gets: a random number, unless turning is off. */
+    int turns(RandomGenerator random) {
+        return plugin.getConfig().getBoolean("random-rotation", true) ? random.nextInt(4) : 0;
+    }
+
     /**
      * Works out every block to set, reading the world before anything changes.
      * Returns null when the trunk would collide, so nothing of the tree is placed.
+     * Blocks in {@code alsoSoft} give way like grass does - the marker blocks of a
+     * preview, which the trees stand in.
      */
-    private @Nullable List<Placement> plan(Clipboard clipboard, Block base, boolean intoTrees) {
-        AffineTransform transform = new AffineTransform();
-        if (plugin.getConfig().getBoolean("random-rotation", true)) {
-            transform = transform.rotateY(90 * ThreadLocalRandom.current().nextInt(4));
-        }
+    @Nullable List<Placement> plan(Clipboard clipboard, Block base, boolean intoTrees, int turns,
+                                   Set<Material> alsoSoft) {
+        AffineTransform transform = new AffineTransform().rotateY(90 * turns);
         boolean overwrite = plugin.getConfig().getBoolean("overwrite-blocks", false);
 
         World world = base.getWorld();
@@ -129,7 +137,7 @@ final class TreePaster {
             }
 
             Block target = world.getBlockAt(x, y, z);
-            if (!overwrite && !canHoldTrunk(target)
+            if (!overwrite && !canHoldTrunk(target) && !alsoSoft.contains(target.getType())
                     && !(intoTrees && Tag.LOGS.isTagged(target.getType()))) {
                 if (leaves) {
                     continue;

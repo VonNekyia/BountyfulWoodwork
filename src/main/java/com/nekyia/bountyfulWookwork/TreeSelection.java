@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.random.RandomGenerator;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -12,16 +13,25 @@ import org.jspecify.annotations.Nullable;
  * birch seven times out of ten. Every word may be a tree type, a size, a creator or
  * a piece of a tree's name, so it reads the way it is meant.
  *
- * <p>Nothing written at all means every archived tree.
+ * <p>Nothing written at all means every archived tree. Held to one {@link Field}, the
+ * words have to be exactly a type or exactly a creator instead.
  */
-record TreeSelection(List<Part> parts) {
+record TreeSelection(List<Part> parts, Field field) {
 
     /** One word of the selection, with the share it was given. */
     record Part(double weight, String word) {
     }
 
+    /** What the words are compared with. */
+    enum Field {
+        /** Type, size, creator or a piece of the name - whatever fits. */
+        ANY,
+        TYPE,
+        CREATOR
+    }
+
     /** Everything in the archive. */
-    static final TreeSelection ALL = new TreeSelection(List.of());
+    static final TreeSelection ALL = new TreeSelection(List.of(), Field.ANY);
 
     /** Reads a selection, or ALL when there is nothing to read. */
     static TreeSelection parse(@Nullable String argument) {
@@ -51,7 +61,20 @@ record TreeSelection(List<Part> parts) {
                 parts.add(new Part(weight, word));
             }
         }
-        return parts.isEmpty() ? ALL : new TreeSelection(parts);
+        return parts.isEmpty() ? ALL : new TreeSelection(parts, Field.ANY);
+    }
+
+    /** The same words, compared with one field only. */
+    TreeSelection by(Field field) {
+        return new TreeSelection(parts, field);
+    }
+
+    private boolean matches(TreeArchive.Entry entry, String word) {
+        return switch (field) {
+            case ANY -> TreeArchive.matches(entry, word);
+            case TYPE -> entry.type().equals(word);
+            case CREATOR -> entry.creator().name().equalsIgnoreCase(word);
+        };
     }
 
     boolean all() {
@@ -65,7 +88,7 @@ record TreeSelection(List<Part> parts) {
         }
         List<TreeArchive.Entry> found = new ArrayList<>();
         for (TreeArchive.Entry entry : entries) {
-            if (parts.stream().anyMatch(part -> TreeArchive.matches(entry, part.word()))) {
+            if (parts.stream().anyMatch(part -> matches(entry, part.word()))) {
                 found.add(entry);
             }
         }
@@ -77,19 +100,24 @@ record TreeSelection(List<Part> parts) {
      * tree drawn from the trees that word names. Null when nothing matches at all.
      */
     TreeArchive.@Nullable Entry pick(List<TreeArchive.Entry> entries) {
+        return pick(entries, ThreadLocalRandom.current());
+    }
+
+    /** As above, drawing from {@code random}, so a seeded one draws the same trees again. */
+    TreeArchive.@Nullable Entry pick(List<TreeArchive.Entry> entries, RandomGenerator random) {
         if (all()) {
-            return entries.isEmpty() ? null : entries.get(random(entries.size()));
+            return entries.isEmpty() ? null : entries.get(random.nextInt(entries.size()));
         }
         // Words that name nothing must not eat their share of the draws.
         List<Part> usable = parts.stream()
-                .filter(part -> entries.stream().anyMatch(e -> TreeArchive.matches(e, part.word())))
+                .filter(part -> entries.stream().anyMatch(e -> matches(e, part.word())))
                 .toList();
         if (usable.isEmpty()) {
             return null;
         }
 
         double total = usable.stream().mapToDouble(Part::weight).sum();
-        double drawn = ThreadLocalRandom.current().nextDouble(total);
+        double drawn = random.nextDouble(total);
         Part picked = usable.getLast();
         for (Part part : usable) {
             drawn -= part.weight();
@@ -101,12 +129,8 @@ record TreeSelection(List<Part> parts) {
 
         Part chosen = picked;
         List<TreeArchive.Entry> of = entries.stream()
-                .filter(entry -> TreeArchive.matches(entry, chosen.word()))
+                .filter(entry -> matches(entry, chosen.word()))
                 .toList();
-        return of.get(random(of.size()));
-    }
-
-    private static int random(int bound) {
-        return ThreadLocalRandom.current().nextInt(bound);
+        return of.get(random.nextInt(of.size()));
     }
 }

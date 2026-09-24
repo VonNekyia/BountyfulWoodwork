@@ -24,13 +24,15 @@ public final class BountyfulWookwork extends JavaPlugin {
         felling.reload();
 
         TreePaster paster = new TreePaster(this, registry);
-        TreeBrush brush = new TreeBrush(this, archive, paster);
+        TreePreview preview = new TreePreview(this, archive, paster);
+        TreeBrush brush = new TreeBrush(this, archive, paster, preview);
 
         PluginManager plugins = getServer().getPluginManager();
         plugins.registerEvents(registry, this);
         plugins.registerEvents(felling, this);
         plugins.registerEvents(new TreeGrowListener(this, archive, paster), this);
         plugins.registerEvents(brush, this);
+        plugins.registerEvents(preview, this);
 
         DebugGeneration debug = new DebugGeneration(this, archive, paster);
         plugins.registerEvents(debug, this);
@@ -40,7 +42,7 @@ public final class BountyfulWookwork extends JavaPlugin {
 
         WookworkCommand command = new WookworkCommand(felling, brush, debug,
                 archive, new TreeLayout(this, archive, paster), new TreeForest(this, archive, paster),
-                new TreeDuplicates(this, archive), trunkPos);
+                new TreeDuplicates(this, archive), preview, trunkPos);
         PluginCommand bw = Objects.requireNonNull(getCommand("bw"));
         bw.setExecutor(command);
         bw.setTabCompleter(command);

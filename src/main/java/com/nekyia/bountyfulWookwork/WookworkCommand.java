@@ -18,6 +18,10 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.event.ClickEvent;
+import net.kyori.adventure.text.event.HoverEvent;
+import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -29,7 +33,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * /bw reload - rereads config.yml and the archive.
- * /bw brush trees|clear - binds the held item to archived trees, or unbinds it.
+ * /bw brush type|creator|block what | clear - binds the held item to what it places.
  * /bw debug generation trees|off - replaces the trees of new chunks with archived ones.
  * /bw type [name] - lists the tree types, or makes one.
  * /bw trunkpos - marks the block a tree stands on; //trunkpos does the same.
@@ -39,7 +43,8 @@ import org.jspecify.annotations.Nullable;
  * /bw resort tree size - files an archived tree under another size, renaming it.
  * /bw recreator tree creator - puts an archived tree under someone else's name.
  * /bw patreon name link - remembers an artist who is not a player here.
- * /bw layout categorized|terrain [trees] - lays the archive out on the tree map.
+ * /bw layout categorized [trees] - lays the archive out on the tree map.
+ * /bw preview blocks:trees/... | player name | clear - shows a forest to you alone.
  * /bw forest preset [x z] - plants a forest preset on the middle of the map.
  */
 final class WookworkCommand implements CommandExecutor, TabCompleter {
@@ -51,11 +56,13 @@ final class WookworkCommand implements CommandExecutor, TabCompleter {
     private final TreeLayout layout;
     private final TreeForest forest;
     private final TreeDuplicates duplicates;
+    private final TreePreview preview;
     private final TrunkPosCommand trunkPos;
 
     WookworkCommand(TreeFelling felling, TreeBrush brush,
                     DebugGeneration debug, TreeArchive archive, TreeLayout layout,
-                    TreeForest forest, TreeDuplicates duplicates, TrunkPosCommand trunkPos) {
+                    TreeForest forest, TreeDuplicates duplicates, TreePreview preview,
+                    TrunkPosCommand trunkPos) {
         this.felling = felling;
         this.brush = brush;
         this.debug = debug;
@@ -63,12 +70,23 @@ final class WookworkCommand implements CommandExecutor, TabCompleter {
         this.layout = layout;
         this.forest = forest;
         this.duplicates = duplicates;
+        this.preview = preview;
         this.trunkPos = trunkPos;
     }
 
     @Override
     public boolean onCommand(@NonNull CommandSender sender, @NonNull Command command,
                              @NonNull String label, @NonNull String @NonNull [] args) {
+        // Everyone may open a preview shared with them; everything else is for admins.
+        if (!sender.hasPermission(TreeBrush.PERMISSION) && !opensSharedPreview(args)) {
+            sender.sendMessage(Component.text("You can only open tree previews shared with you.",
+                    NamedTextColor.RED));
+            return true;
+        }
+        if (args.length >= 1 && args[0].equalsIgnoreCase("preview")) {
+            preview(sender, args);
+            return true;
+        }
         if (args.length == 1 && args[0].equalsIgnoreCase("reload")) {
             int archived = archive.reload();
             felling.reload();
@@ -125,7 +143,7 @@ final class WookworkCommand implements CommandExecutor, TabCompleter {
             return true;
         }
         if (args.length >= 2 && args[0].equalsIgnoreCase("brush")) {
-            brush(sender, String.join("", Arrays.copyOfRange(args, 1, args.length)));
+            brush(sender, args);
             return true;
         }
         if (args.length == 3 && args[0].equalsIgnoreCase("debug") && args[1].equalsIgnoreCase("generation")) {
@@ -135,8 +153,16 @@ final class WookworkCommand implements CommandExecutor, TabCompleter {
         return false;
     }
 
-    /** /bw brush trees|clear - trees written like /bw layout terrain takes them. */
-    private void brush(CommandSender sender, String selection) {
+    /** The categories /bw brush takes, so tab completion only offers what fits. */
+    private static final List<String> BRUSH_CATEGORIES = List.of("type", "creator", "block");
+
+    /**
+     * /bw brush type birch,oak - places those trees; creator works the same way.
+     * /bw brush block gold_block,diamond_block - sets one of those blocks.
+     * /bw brush block gold_block:beech/... - sets the marker and previews its tree.
+     * /bw brush clear - makes the item an item again.
+     */
+    private void brush(CommandSender sender, String[] args) {
         if (!(sender instanceof Player player)) {
             sender.sendMessage(Component.text("Only players can hold a brush.", NamedTextColor.RED));
             return;
@@ -147,20 +173,42 @@ final class WookworkCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        if (selection.equalsIgnoreCase("clear")) {
+        if (args.length == 2 && args[1].equalsIgnoreCase("clear")) {
             brush.bind(item, null);
             player.sendMessage(Component.text("Removed the tree brush from this item.", NamedTextColor.GREEN));
             return;
         }
-        String normalized = selection.toLowerCase(Locale.ROOT);
-        int matching = TreeSelection.parse(normalized).matching(archive.entries()).size();
-        if (matching == 0) {
-            player.sendMessage(Component.text("No archived tree matches '" + normalized + "'.",
+        String category = args[1].toLowerCase(Locale.ROOT);
+        if (args.length < 3 || !BRUSH_CATEGORIES.contains(category)) {
+            player.sendMessage(Component.text("Usage: /bw brush <type|creator|block> <what> | clear",
                     NamedTextColor.RED));
             return;
         }
-        brush.bind(item, normalized);
-        player.sendMessage(Component.text("This item is now a brush for " + normalized + " ("
+        String what = String.join("", Arrays.copyOfRange(args, 2, args.length)).toLowerCase(Locale.ROOT);
+
+        if (category.equals("block")) {
+            PreviewSpec spec;
+            try {
+                spec = PreviewSpec.parse(what);
+            } catch (IllegalArgumentException e) {
+                player.sendMessage(Component.text("Cannot read that: " + e.getMessage() + ".", NamedTextColor.RED));
+                return;
+            }
+            brush.bind(item, category + " " + what);
+            boolean trees = spec.parts().stream().anyMatch(part -> part.trees() != null);
+            player.sendMessage(Component.text("This item now sets " + spec.markers().size() + " kinds of block"
+                    + (trees ? " and shows their trees as a preview" : "")
+                    + ". Right-click in creative to use it.", NamedTextColor.GREEN));
+            return;
+        }
+        int matching = TreeBrush.trees(category, what).matching(archive.entries()).size();
+        if (matching == 0) {
+            player.sendMessage(Component.text("No archived tree has the " + category + " '" + what + "'.",
+                    NamedTextColor.RED));
+            return;
+        }
+        brush.bind(item, category + " " + what);
+        player.sendMessage(Component.text("This item is now a brush for " + what + " ("
                 + matching + " trees). Right-click in creative to place them.", NamedTextColor.GREEN));
     }
 
@@ -410,6 +458,47 @@ final class WookworkCommand implements CommandExecutor, TabCompleter {
         }
     }
 
+    /** Every block a marker may be, by name. */
+    private static final List<String> BLOCKS = Arrays.stream(Material.values())
+            .filter(material -> material.isBlock() && !material.isAir() && !material.isLegacy())
+            .map(material -> material.name().toLowerCase(Locale.ROOT))
+            .toList();
+
+    /**
+     * Completes a spec like gold_block,diamond_block:beech/emerald_block:oak piece by
+     * piece: before a colon it offers blocks, after it trees, and once a name is whole
+     * the separators that may follow it. The piece typed so far is kept in front, since
+     * the whole argument is what gets replaced.
+     */
+    private Stream<String> specOptions(String typed) {
+        String lower = typed.toLowerCase(Locale.ROOT);
+        int slash = lower.lastIndexOf('/');
+        int colon = lower.indexOf(':', slash + 1);
+        boolean blocks = colon < 0;
+        int start = Math.max(lower.lastIndexOf(','), blocks ? slash : colon) + 1;
+        return wordOptions(lower, start, blocks ? BLOCKS : filters().toList(),
+                blocks ? List.of(":", ",") : List.of(",", "/"));
+    }
+
+    /** Completes a plain comma list like birch,70%oak from these names. */
+    private static Stream<String> listOptions(String typed, List<String> names) {
+        String lower = typed.toLowerCase(Locale.ROOT);
+        return wordOptions(lower, lower.lastIndexOf(',') + 1, names, List.of(","));
+    }
+
+    /**
+     * Completes the word starting at {@code start}, keeping what comes before it and a
+     * share like 70% in front of it; a whole name also offers what may follow it.
+     */
+    private static Stream<String> wordOptions(String lower, int start, List<String> names, List<String> next) {
+        String word = lower.substring(start);
+        int percent = word.indexOf('%');
+        String head = lower.substring(0, start + percent + 1);
+        String partial = word.substring(percent + 1);
+        Stream<String> words = names.stream().filter(name -> name.startsWith(partial)).map(name -> head + name);
+        return names.contains(partial) ? Stream.concat(words, next.stream().map(after -> lower + after)) : words;
+    }
+
     /** The creator: an artist already known, or someone on the server. */
     private Stream<String> creators(CommandSender sender) {
         return Stream.concat(archive.patreons().keySet().stream(),
@@ -518,7 +607,93 @@ final class WookworkCommand implements CommandExecutor, TabCompleter {
         }
     }
 
-    /** /bw layout [categorized|terrain] [trees] - puts the archive on the ground. */
+    /** Whether this is someone opening a preview shared with them, or closing it. */
+    private static boolean opensSharedPreview(String[] args) {
+        return args.length >= 2 && args[0].equalsIgnoreCase("preview")
+                && (args[1].equalsIgnoreCase("clear")
+                || Arrays.stream(args).anyMatch(argument -> argument.equalsIgnoreCase("--seed")));
+    }
+
+    /**
+     * /bw preview blocks:trees/... - shows a forest on the markers of the preview world.
+     * /bw preview player name - sends someone a link to the preview you are looking at.
+     * /bw preview clear - takes the preview away again.
+     */
+    private void preview(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Only players can look at a preview.", NamedTextColor.RED));
+            return;
+        }
+        if (args.length == 1) {
+            player.sendMessage(Component.text("Usage: /bw preview <blocks:trees/...> | player <name> | clear."
+                    + " Example: gold_block:silver_fir,white_pine/diamond_block:beech", NamedTextColor.RED));
+            return;
+        }
+        if (args[1].equalsIgnoreCase("clear")) {
+            preview.clear(player);
+            player.sendMessage(Component.text("Preview taken away.", NamedTextColor.GREEN));
+            return;
+        }
+        if (args[1].equalsIgnoreCase("player")) {
+            Player target = args.length == 3 ? player.getServer().getPlayerExact(args[2]) : null;
+            String shared = preview.shared(player);
+            if (target == null) {
+                player.sendMessage(Component.text("Usage: /bw preview player <online player>", NamedTextColor.RED));
+            } else if (shared == null) {
+                player.sendMessage(Component.text("Open a preview first; that one is what gets sent.",
+                        NamedTextColor.RED));
+            } else {
+                target.sendMessage(Component.text(player.getName() + " shares a tree preview with you. ",
+                                NamedTextColor.GREEN)
+                        .append(Component.text("[Show it]", NamedTextColor.AQUA)
+                                .clickEvent(ClickEvent.runCommand("/bw preview " + shared))
+                                .hoverEvent(HoverEvent.showText(Component.text(shared)))));
+                player.sendMessage(Component.text("Sent " + target.getName() + " your preview.",
+                        NamedTextColor.GREEN));
+            }
+            return;
+        }
+
+        // A preview grows around whoever starts it, from a new seed that shuffles the
+        // trees; a shared link brings its own seed and place along.
+        long seed = TreePreview.newSeed();
+        World world = player.getWorld();
+        int x = player.getLocation().getBlockX();
+        int z = player.getLocation().getBlockZ();
+        StringBuilder text = new StringBuilder();
+        try {
+            for (int i = 1; i < args.length; i++) {
+                if (args[i].equalsIgnoreCase("--seed") && i + 1 < args.length) {
+                    seed = Long.parseLong(args[++i]);
+                } else if (args[i].equalsIgnoreCase("--at") && i + 1 < args.length) {
+                    String[] at = args[++i].split(",");
+                    world = at.length == 3 ? preview.world(at[0]) : null;
+                    if (world == null) {
+                        player.sendMessage(Component.text("That preview is in a world that is not loaded.",
+                                NamedTextColor.RED));
+                        return;
+                    }
+                    x = Integer.parseInt(at[1]);
+                    z = Integer.parseInt(at[2]);
+                } else {
+                    text.append(args[i].toLowerCase(Locale.ROOT));
+                }
+            }
+        } catch (NumberFormatException e) {
+            player.sendMessage(Component.text("Seeds and places are whole numbers.", NamedTextColor.RED));
+            return;
+        }
+        PreviewSpec spec;
+        try {
+            spec = PreviewSpec.parse(text.toString());
+        } catch (IllegalArgumentException e) {
+            player.sendMessage(Component.text("Cannot read that: " + e.getMessage() + ".", NamedTextColor.RED));
+            return;
+        }
+        preview.show(player, text.toString(), spec, seed, world, x, z);
+    }
+
+    /** /bw layout [categorized] [trees] - puts the archive on the ground. */
     private void layout(CommandSender sender, String[] args) {
         if (!(sender instanceof Player player)) {
             sender.sendMessage(Component.text("Only players can lay out the archive.", NamedTextColor.RED));
@@ -643,17 +818,20 @@ final class WookworkCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(@NonNull CommandSender sender, @NonNull Command command,
                                       @NonNull String label, @NonNull String @NonNull [] args) {
+        if (!sender.hasPermission(TreeBrush.PERMISSION)) {
+            return List.of();
+        }
         Stream<String> options = switch (args.length) {
             case 1 -> Stream.of("reload", "brush", "debug", "type", "trunkpos", "archive", "list",
-                    "duplicates", "resort", "recreator", "patreon", "layout", "forest");
+                    "duplicates", "resort", "recreator", "patreon", "layout", "preview", "forest");
             case 2 -> switch (args[0].toLowerCase(Locale.ROOT)) {
-                case "brush" -> Stream.concat(Stream.of("clear"), filters());
+                case "brush" -> Stream.concat(BRUSH_CATEGORIES.stream(), Stream.of("clear"));
+                case "preview" -> Stream.concat(Stream.of("player", "clear"), specOptions(args[1]));
                 case "archive" -> archive.types().stream();
                 // Only "remove": here a type is being named, usually a new one.
                 case "type" -> Stream.of("remove");
                 case "patreon" -> archive.patreons().keySet().stream();
                 case "layout" -> Stream.concat(TreeLayout.modes().stream(), Stream.of("stop"));
-                // The trees to lay out, written like WorldEdit blocks.
                 case "forest" -> Stream.concat(forest.presets().stream(), Stream.of("save", "stop"));
                 case "debug" -> Stream.of("generation");
                 case "list" -> filters();
@@ -678,6 +856,18 @@ final class WookworkCommand implements CommandExecutor, TabCompleter {
                 }
                 if (args[0].equalsIgnoreCase("layout")) {
                     yield filters();
+                }
+                if (args[0].equalsIgnoreCase("brush")) {
+                    yield switch (args[1].toLowerCase(Locale.ROOT)) {
+                        case "type" -> listOptions(args[2], List.copyOf(archive.types()));
+                        case "creator" -> listOptions(args[2], archive.entries().stream()
+                                .map(entry -> entry.creator().name().toLowerCase(Locale.ROOT)).distinct().toList());
+                        case "block" -> specOptions(args[2]);
+                        default -> Stream.empty();
+                    };
+                }
+                if (args[0].equalsIgnoreCase("preview") && args[1].equalsIgnoreCase("player")) {
+                    yield sender.getServer().getOnlinePlayers().stream().map(Player::getName);
                 }
                 yield args[0].equalsIgnoreCase("archive") ? creators(sender) : Stream.empty();
             }

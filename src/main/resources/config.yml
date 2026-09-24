@@ -1,7 +1,8 @@
 # Every tree this plugin places comes from the archive (see below). Wherever trees are
-# chosen - /bw brush, /bw layout, /bw debug generation and saplings under 'trees' - they
-# are written the way WorldEdit writes blocks: birch, birch,oak or 70%birch,30%oak. A
-# word may be a tree type, a size, a creator or a piece of a tree's name.
+# chosen - /bw brush, /bw layout, /bw preview, /bw debug generation and saplings under
+# 'trees' - they are written the way WorldEdit writes blocks: birch, birch,oak or
+# 70%birch,30%oak. A word may be a tree type, a size, a creator or a piece of a tree's
+# name.
 
 # Rotate each pasted tree by a random multiple of 90 degrees.
 random-rotation: true
@@ -130,38 +131,33 @@ categories:
     plot-size: 81
 
 
-# /bw layout has two ways of putting the archive on the ground, and both take the trees
-# to use written like WorldEdit blocks: birch,oak or 70%birch,30%oak, or nothing at all
+# /bw layout categorized [trees] lays the archive out where you stand: a plot per tree,
+# ordered by type, then creator, then size, each floored with a checkerboard of light
+# gray and cyan terracotta and a red block in the middle, where the trunk goes. The
+# trees are written like WorldEdit blocks - birch,oak or 70%birch,30%oak - or left out
 # for everything in the archive.
-#
-#   /bw layout categorized [trees]  a plot per tree where you stand, ordered by type,
-#                                   then creator, then size; each plot floored with a
-#                                   checkerboard of light gray and cyan terracotta and
-#                                   a red block in the middle, where the trunk goes.
-#   /bw layout terrain [trees]      copies the piece of the prepared world below onto
-#                                   the map you stand in, and turns every marker block
-#                                   in it into a tree.
 layout:
   # Plots in a row before the next row begins; a new type always starts a new row.
   row-length: 8
   # Time spent per tick while working.
   tick-budget-ms: 10
-  terrain:
-    # The world to copy from, by its key or its plain name. It has to be loaded.
-    world: "worlds:preset_forest"
-    # The piece of it to copy, corner to corner.
-    from-x: -150
-    from-z: -150
-    to-x: 150
-    to-z: 150
-    # How much of the height to take with it.
-    min-y: -64
-    max-y: 160
-    # Where it lands: the same coordinates on the other map, plus this.
-    offset-x: 0
-    offset-z: 0
-    # The block that means a tree. One left standing is one that had no room.
-    marker: gold_block
+
+# /bw preview shows a forest to you alone: every marker block around where you stand
+# becomes an archived tree, sent to your client and nowhere else.
+#   /bw preview gold_block:silver_fir,white_pine/diamond_block:beech
+#   /bw preview gold_block,diamond_block:beech
+# Asking again shuffles the trees; /bw preview player <name> sends someone yours, and
+# hitting a ghost trunk takes that tree away. A marker left standing had no room.
+preview:
+  # How far around you markers are looked for, and how much of the height.
+  radius: 150
+  # The most trees one preview shows. More markers than this and there is no preview:
+  # a guard against marking with a block that is everywhere, like stone.
+  max-trees: 100
+  min-y: -64
+  max-y: 160
+  # Time spent per tick while growing a preview.
+  tick-budget-ms: 5
 
 
 # /bw duplicates reads every blueprint and reports the trees that are in the archive
