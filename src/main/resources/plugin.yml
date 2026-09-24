@@ -1,31 +1,20 @@
-name: BountyfulWookwork
+name: BountyfulWoodwork
 version: '${version}'
 
-main: com.nekyia.bountyfulWookwork.BountyfulWookwork
+main: com.nekyia.bountyfulWoodwork.BountyfulWoodwork
 api-version: '26.3'
 load: POSTWORLD
-depend: [ WorldEdit ]
 softdepend: [ Nexo ]
 
 authors: [ gerryxn ]
 
 commands:
   bw:
-    description: Archives tree blueprints and puts them into the world.
-    usage: /bw reload | /bw brush <type|creator|block> <what> | clear | /bw debug generation <trees|off> | /bw type [name|remove <name>] | /bw trunkpos | /bw archive <type> <creator> [--size <category>] [--overwrite <tree>] | /bw list [type|size|creator] | /bw duplicates | /bw resort <tree> <size> | /bw recreator <tree> <creator> | /bw patreon <name> <link> | /bw layout categorized [trees] | /bw preview <blocks:trees/...|player <name>|clear> | /bw forest <preset> [x z]
-    aliases: [ wookwork ]
-    # Low, so anyone can open a preview shared with them; the rest checks for admin.
-    permission: bountyfulwookwork.preview
-  "/trunkpos":
-    description: Marks the block a tree stands on, for /bw archive.
-    usage: //trunkpos
-    permission: bountyfulwookwork.admin
+    description: Reloads the felling settings.
+    usage: /bw reload
+    aliases: [ woodwork ]
+    permission: bountyfulwoodwork.admin
 
 permissions:
-  bountyfulwookwork.admin:
+  bountyfulwoodwork.admin:
     default: op
-    children:
-      bountyfulwookwork.preview: true
-  bountyfulwookwork.preview:
-    description: Open tree previews shared with you.
-    default: true

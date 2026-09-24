@@ -1,4 +1,4 @@
-package com.nekyia.bountyfulWookwork;
+package com.nekyia.bountyfulWoodwork;
 
 import org.bukkit.block.Block;
 

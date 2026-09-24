@@ -1,6 +1,6 @@
-package com.nekyia.bountyfulWookwork;
+package com.nekyia.bountyfulWoodwork;
 
-import com.nekyia.bountyfulWookwork.TreeRegistry.TreePart;
+import com.nekyia.bountyfulWoodwork.TreeRegistry.TreePart;
 import com.nexomc.nexo.api.NexoItems;
 import com.nexomc.nexo.items.ItemBuilder;
 import java.util.ArrayList;
@@ -232,7 +232,7 @@ final class TreeFelling implements Listener {
 
     /** Builders in creative with the admin permission break trees block by block. */
     private static boolean bypasses(Player player) {
-        return player.getGameMode() == GameMode.CREATIVE && player.hasPermission(TreeBrush.PERMISSION);
+        return player.getGameMode() == GameMode.CREATIVE && player.hasPermission(BountyfulWoodwork.ADMIN);
     }
 
     private void fell(Block cut, TreePart tree, Player player) {

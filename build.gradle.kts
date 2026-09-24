@@ -7,7 +7,6 @@ plugins {
 
 repositories {
     mavenCentral()
-    maven("https://maven.enginehub.org/repo/")
 }
 
 // The main server's plugin folder, which is also where the compile-only plugin jars
@@ -17,20 +16,8 @@ val testServerPluginFolder: Provider<Directory> =
         .map { layout.projectDirectory.dir(it) }
         .orElse(layout.projectDirectory.dir("../server-terranova/servers/main/plugins"))
 
-// The build server's plugin folder; every build deploys there as well.
-// Override with -PbuildServerPluginFolder=<path>.
-val buildServerPluginFolder: Provider<Directory> =
-    providers.gradleProperty("buildServerPluginFolder")
-        .map { layout.projectDirectory.dir(it) }
-        .orElse(layout.projectDirectory.dir("../server-terranova/servers/build/plugins"))
-
 dependencies {
     paperweight.paperDevBundle(libs.versions.paper.api.get())
-
-    // Provided by the WorldEdit plugin at runtime. Its transitive libraries
-    // clash with the dev bundle's and none of them are needed to compile against it.
-    compileOnly(libs.worldedit.core) { isTransitive = false }
-    compileOnly(libs.worldedit.bukkit) { isTransitive = false }
 
     // Nexo is optional at runtime (only for Nexo item drops). Its API comes from the
     // jar deployed alongside us in the test server.
@@ -46,7 +33,7 @@ java {
 tasks {
     build {
         dependsOn(shadowJar)
-        finalizedBy("deployToTestServer")
+        finalizedBy("deployToMainServer")
     }
 
     // The shadow jar is the one that ships, so it takes the plain name and the
@@ -59,7 +46,7 @@ tasks {
         archiveClassifier.set("")
     }
 
-    val deployToMainServer by registering(Copy::class) {
+    register<Copy>("deployToMainServer") {
         group = "distribution"
         description = "Copies the plugin jar into the main server's plugin folder."
         from(shadowJar)
@@ -68,20 +55,6 @@ tasks {
         // A live server holds files open in that folder, and Gradle refuses to
         // fingerprint a destination it cannot fully read.
         doNotTrackState("the destination is a running server's plugin folder")
-    }
-
-    val deployToBuildServer by registering(Copy::class) {
-        group = "distribution"
-        description = "Copies the plugin jar into the build server's plugin folder."
-        from(shadowJar)
-        into(buildServerPluginFolder)
-        doNotTrackState("the destination is a running server's plugin folder")
-    }
-
-    register("deployToTestServer") {
-        group = "distribution"
-        description = "Copies the plugin jar into the main and build servers' plugin folders."
-        dependsOn(deployToMainServer, deployToBuildServer)
     }
 
     runServer {
