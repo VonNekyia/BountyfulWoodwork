@@ -44,5 +44,6 @@ class LeafColoursTest {
         assertNull(LeafColours.fromBytes(later));
         assertNull(LeafColours.fromBytes(Arrays.copyOf(kept, kept.length - 1)));
         assertNull(LeafColours.fromBytes(Arrays.copyOf(kept, kept.length + 4)));
+        assertNull(LeafColours.fromBytes(new byte[] {1, -1, -1, -1, -1}));
     }
 }

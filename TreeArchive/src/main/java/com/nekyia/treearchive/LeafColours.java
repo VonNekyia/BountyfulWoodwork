@@ -199,13 +199,18 @@ final class LeafColours {
             if (in.readByte() != VERSION) {
                 return null;
             }
-            for (int groups = in.readInt(); groups > 0; groups--) {
+            int groups = in.readInt();
+            for (; groups > 0; groups--) {
                 int colour = in.readInt();
-                for (int count = in.readInt(); count > 0; count--) {
+                int count = in.readInt();
+                if (count < 0) {
+                    return null;
+                }
+                for (; count > 0; count--) {
                     colours.put(in.readInt(), colour);
                 }
             }
-            return in.available() == 0 ? colours : null;
+            return groups == 0 && in.available() == 0 ? colours : null;
         } catch (IOException e) {
             return null;
         }
