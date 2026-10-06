@@ -174,7 +174,8 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
     private static final List<String> BRUSH_CATEGORIES = List.of("type", "creator", "block");
 
     /**
-     * /ta brush type birch,oak - places those trees; creator works the same way.
+     * /ta brush type birch,oak - places those trees; creator works the same way. Written
+     * as in a preview, maple*#c0392b&bright, a tree's leaves keep that colour in their chunk.
      * /ta brush block gold_block,diamond_block - sets one of those blocks.
      * /ta brush block gold_block:beech/... - sets the marker and previews its tree.
      * /ta brush clear - makes the item an item again.

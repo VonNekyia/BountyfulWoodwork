@@ -33,7 +33,8 @@ import org.jspecify.annotations.Nullable;
  * It is bound to a category and what of it, as in /ta brush:
  * <ul>
  *   <li>{@code type birch,oak} or {@code creator 70%snifferish,30%graysun} - one of
- *       those trees;</li>
+ *       those trees; {@code type maple*#c0392b&mistle} with leaves of that colour, kept in
+ *       their chunks, and the tree's modifiers;</li>
  *   <li>{@code block gold_block,diamond_block} - one of those blocks, for painting the
  *       markers a preview turns into trees;</li>
  *   <li>{@code block gold_block:silver_fir/diamond_block:beech} - the marker, with its
@@ -134,7 +135,7 @@ final class TreeBrush implements Listener {
                     NamedTextColor.RED));
             return;
         }
-        if (!paster.paste(entry.type(), clipboard, base, player, false, pick.modifiers())) {
+        if (!paster.paste(entry.type(), clipboard, base, player, false, pick.modifiers(), pick.paint())) {
             player.sendActionBar(Component.text("The tree would collide with blocks there.", NamedTextColor.RED));
         }
     }

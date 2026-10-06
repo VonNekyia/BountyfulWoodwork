@@ -18,7 +18,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Consumer;
 import java.util.random.RandomGenerator;
+import org.bukkit.Chunk;
 import org.bukkit.Material;
 import org.bukkit.Tag;
 import org.bukkit.World;
@@ -44,9 +46,16 @@ final class TreePaster {
     private static final double MISTLE_BUSH_SHARE = 0.62;
 
     private final JavaPlugin plugin;
+    private Consumer<Chunk> coloured = chunk -> {
+    };
 
     TreePaster(JavaPlugin plugin) {
         this.plugin = plugin;
+    }
+
+    /** Told whenever the leaf colours a chunk keeps changed. */
+    void onColoured(Consumer<Chunk> listener) {
+        coloured = listener;
     }
 
     /** One block of the tree, rotated and at its world position. */
@@ -85,12 +94,15 @@ final class TreePaster {
      * standing and nothing would ever fit otherwise.
      */
     boolean paste(String type, Clipboard clipboard, Block base, @Nullable Player player, boolean intoTrees) {
-        return paste(type, clipboard, base, player, intoTrees, Set.of());
+        return paste(type, clipboard, base, player, intoTrees, Set.of(), null);
     }
 
-    /** As above, with the mistletoe the tree's modifiers ask for hung in the crown. */
+    /**
+     * As above, with the mistletoe the tree's modifiers ask for hung in the crown, and the
+     * leaves painted - kept in their chunks, see {@link #keepColours}.
+     */
     boolean paste(String type, Clipboard clipboard, Block base, @Nullable Player player, boolean intoTrees,
-                  Set<String> modifiers) {
+                  Set<String> modifiers, LeafColours.@Nullable Paint paint) {
         List<Placement> placements = plan(clipboard, base, intoTrees,
                 turns(ThreadLocalRandom.current()), Set.of(), false);
         if (placements == null) {
@@ -110,7 +122,42 @@ final class TreePaster {
             plugin.getLogger().warning("Could not place a " + type + " tree: " + e.getMessage());
             return false;
         }
+        keepColours(world, placements, paint);
         return true;
+    }
+
+    /**
+     * Has the chunks keep the colours of a placed tree's leaves, painted as its crown is
+     * spread. Every spot the tree took loses the colour it kept before, so a tree without
+     * paint takes away the colours of whatever stood there.
+     */
+    private void keepColours(World world, List<Placement> placements, LeafColours.@Nullable Paint paint) {
+        List<int[]> leaves = new ArrayList<>();
+        for (Placement placement : placements) {
+            if (Tag.LEAVES.isTagged(BukkitAdapter.adapt(placement.block().getBlockType()))) {
+                leaves.add(new int[] {placement.x(), placement.y(), placement.z()});
+            }
+        }
+        LeafColours.Crown crown = LeafColours.Crown.of(leaves);
+        Map<Chunk, Map<Integer, Integer>> kept = new HashMap<>();
+        for (Placement placement : placements) {
+            Map<Integer, Integer> colours = kept.computeIfAbsent(
+                    world.getChunkAt(placement.x() >> 4, placement.z() >> 4), LeafColours::kept);
+            if (colours == null) {
+                continue;
+            }
+            int place = LeafColours.packed(placement.x(), placement.y(), placement.z());
+            if (paint != null && LeafColours.TINTED.contains(BukkitAdapter.adapt(placement.block().getBlockType()))) {
+                colours.put(place, paint.at(crown, placement.x(), placement.y(), placement.z()));
+            } else {
+                colours.remove(place);
+            }
+        }
+        kept.forEach((chunk, colours) -> {
+            if (LeafColours.keep(chunk, colours)) {
+                coloured.accept(chunk);
+            }
+        });
     }
 
     /** How many quarter turns the next tree gets: a random number, unless turning is off. */

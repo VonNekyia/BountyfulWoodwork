@@ -37,6 +37,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.level.block.state.BlockState;
+import org.bukkit.Chunk;
 import org.bukkit.ChunkSnapshot;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -56,7 +57,9 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerRegisterChannelEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
@@ -84,7 +87,10 @@ import org.jspecify.annotations.Nullable;
  * ghosts are sent again right after it.
  *
  * <p>Trees written with a colour, {@code beech*#d98c2b}, show their leaves in it to the
- * viewers who have the ColorfulLeaves mod.
+ * viewers who have the ColorfulLeaves mod. Under them lie the colours chunks keep for
+ * trees placed for real: those go out to everyone with the mod, in a preview or not,
+ * whenever a chunk reaches them - WorldEdit's refreshes included, which make the client
+ * forget a chunk's colours.
  */
 final class TreePreview implements Listener {
 
@@ -169,11 +175,22 @@ final class TreePreview implements Listener {
     private final TreePaster paster;
     private final Map<String, Session> sessions = new HashMap<>();
     private final Map<UUID, Session> watching = new ConcurrentHashMap<>();
+    /** Players with the mod, as the connections see them. */
+    private final Set<UUID> modded = ConcurrentHashMap.newKeySet();
 
     TreePreview(JavaPlugin plugin, TreeArchive archive, TreePaster paster) {
         this.plugin = plugin;
         this.archive = archive;
         this.paster = paster;
+        plugin.getServer().getOnlinePlayers().forEach(this::keep);
+    }
+
+    /** The colours a chunk keeps changed: everyone who sees it gets them again. */
+    void coloured(Chunk chunk) {
+        long key = chunkKey(chunk.getX(), chunk.getZ());
+        for (Player player : chunk.getPlayersSeeingChunk()) {
+            sendColours(watching.get(player.getUniqueId()), player, Set.of(key), true);
+        }
     }
 
     /** A fresh seed, short enough to read in a chat link. */
@@ -199,10 +216,7 @@ final class TreePreview implements Listener {
             Map<Position, BlockData> real = new HashMap<>();
             session.ghosts.keySet().forEach(key -> real.put(position(key), realAt(world, key)));
             player.sendMultiBlockChange(real);
-            if (!session.paints.isEmpty() && player.getListeningPluginChannels().contains(LeafColours.CHANNEL)) {
-                session.byChunk.keySet().forEach(chunk -> player.sendPluginMessage(plugin, LeafColours.CHANNEL,
-                        LeafColours.encode((int) (chunk >> 32), (int) (long) chunk, Map.of())));
-            }
+            sendColours(null, player, session.byChunk.keySet(), true);
         }
     }
 
@@ -233,7 +247,7 @@ final class TreePreview implements Listener {
             Map<Position, BlockData> all = new HashMap<>();
             running.ghosts.forEach((position, ghost) -> all.put(position(position), ghost));
             player.sendMultiBlockChange(all);
-            sendColours(running, player, running.byChunk.keySet());
+            sendColours(running, player, running.byChunk.keySet(), true);
             player.sendMessage(Component.text("Joined the preview " + text + " (" + running.trees.size()
                     + " trees).", NamedTextColor.GREEN));
             return;
@@ -418,9 +432,7 @@ final class TreePreview implements Listener {
             session.crowns.put(markerKey, LeafColours.Crown.of(crown));
         }
         send(session, sent);
-        if (!session.paints.isEmpty()) {
-            sendColours(session, chunksOf(keys));
-        }
+        sendColours(session, chunksOf(keys));
         return true;
     }
 
@@ -446,9 +458,8 @@ final class TreePreview implements Listener {
         }
         send(session, real);
         session.crowns.remove(markerKey);
-        if (session.paints.remove(markerKey) != null || !session.paints.isEmpty()) {
-            sendColours(session, chunksOf(keys));
-        }
+        session.paints.remove(markerKey);
+        sendColours(session, chunksOf(keys));
     }
 
     /** The chunks these places lie in. */
@@ -465,37 +476,50 @@ final class TreePreview implements Listener {
         for (UUID viewer : session.viewers) {
             Player player = plugin.getServer().getPlayer(viewer);
             if (player != null) {
-                sendColours(session, player, chunks);
+                sendColours(session, player, chunks, true);
             }
         }
     }
 
-    private void sendColours(Session session, Player player, Set<Long> chunks) {
-        if (session.paints.isEmpty() || !player.getListeningPluginChannels().contains(LeafColours.CHANNEL)
-                || !player.getWorld().getUID().equals(session.world)) {
+    /**
+     * Sends a player with the mod these chunks' leaf colours: those the chunks keep, and
+     * over them a preview's own, where it shows its trees. A chunk without any colours goes
+     * out empty only when asked to, taking away colours sent before.
+     */
+    private void sendColours(@Nullable Session session, Player player, Set<Long> chunks, boolean evenEmpty) {
+        if (!player.getListeningPluginChannels().contains(LeafColours.CHANNEL)) {
             return;
         }
+        World world = player.getWorld();
+        Session shown = session != null && world.getUID().equals(session.world) ? session : null;
         for (long chunk : chunks) {
-            Map<Integer, List<Integer>> byColour = new HashMap<>();
-            Set<Long> keys = session.byChunk.get(chunk);
-            if (keys != null) {
+            int chunkX = (int) (chunk >> 32);
+            int chunkZ = (int) chunk;
+            Map<Integer, Integer> kept = world.isChunkLoaded(chunkX, chunkZ)
+                    ? LeafColours.kept(world.getChunkAt(chunkX, chunkZ)) : null;
+            Map<Integer, Integer> colours = kept == null ? new HashMap<>() : kept;
+            Set<Long> keys = shown == null ? null : shown.byChunk.get(chunk);
+            if (shown != null && keys != null) {
                 for (long key : keys) {
-                    BlockData ghost = session.ghosts.get(key);
-                    Long owner = session.owners.get(key);
-                    LeafColours.Paint paint = owner == null ? null : session.paints.get(owner);
-                    LeafColours.Crown crown = owner == null ? null : session.crowns.get(owner);
+                    int x = BlockKeys.x(key);
+                    int y = BlockKeys.y(key);
+                    int z = BlockKeys.z(key);
+                    // A ghost stands in for what is really there, colour and all.
+                    colours.remove(LeafColours.packed(x, y, z));
+                    BlockData ghost = shown.ghosts.get(key);
+                    Long owner = shown.owners.get(key);
+                    LeafColours.Paint paint = owner == null ? null : shown.paints.get(owner);
+                    LeafColours.Crown crown = owner == null ? null : shown.crowns.get(owner);
                     if (paint != null && crown != null && ghost != null
                             && LeafColours.TINTED.contains(ghost.getMaterial())) {
-                        int x = BlockKeys.x(key);
-                        int y = BlockKeys.y(key);
-                        int z = BlockKeys.z(key);
-                        byColour.computeIfAbsent(paint.at(crown, x, y, z), ignored -> new ArrayList<>())
-                                .add(LeafColours.packed(x, y, z));
+                        colours.put(LeafColours.packed(x, y, z), paint.at(crown, x, y, z));
                     }
                 }
             }
-            player.sendPluginMessage(plugin, LeafColours.CHANNEL,
-                    LeafColours.encode((int) (chunk >> 32), (int) chunk, byColour));
+            if (evenEmpty || !colours.isEmpty()) {
+                player.sendPluginMessage(plugin, LeafColours.CHANNEL,
+                        LeafColours.encode(chunkX, chunkZ, LeafColours.grouped(colours)));
+            }
         }
     }
 
@@ -637,9 +661,35 @@ final class TreePreview implements Listener {
         });
     }
 
-    /** Makes a player a viewer, and keeps watch on their connection for what overwrites the ghosts. */
+    /** Makes a player a viewer. */
     private void watch(Player player, Session session) {
         watching.put(player.getUniqueId(), session);
+        keep(player);
+    }
+
+    @EventHandler
+    public void onJoin(PlayerJoinEvent event) {
+        keep(event.getPlayer());
+    }
+
+    /** The mod made itself known, perhaps after chunks went out: it gets their colours now. */
+    @EventHandler
+    public void onModFound(PlayerRegisterChannelEvent event) {
+        if (!event.getChannel().equals(LeafColours.CHANNEL)) {
+            return;
+        }
+        Player player = event.getPlayer();
+        modded.add(player.getUniqueId());
+        Set<Long> sent = new HashSet<>();
+        player.getSentChunks().forEach(chunk -> sent.add(chunkKey(chunk.getX(), chunk.getZ())));
+        sendColours(watching.get(player.getUniqueId()), player, sent, false);
+    }
+
+    /** Keeps watch on a player's connection for chunks going out, and what overwrites ghosts. */
+    private void keep(Player player) {
+        if (player.getListeningPluginChannels().contains(LeafColours.CHANNEL)) {
+            modded.add(player.getUniqueId());
+        }
         Channel channel = ((CraftPlayer) player).getHandle().connection.connection.channel;
         channel.eventLoop().execute(() -> {
             if (channel.isActive() && channel.pipeline().get(GhostKeeper.NAME) == null
@@ -651,7 +701,8 @@ final class TreePreview implements Listener {
     }
 
     /**
-     * Sits on a viewer's connection and notices real blocks going out where they see
+     * Sits on a player's connection and notices chunks going out, which the client takes
+     * without their colours, and, for a viewer, real blocks going out where they see
      * ghosts: a whole chunk sent again, or single blocks. Runs on the network thread, so
      * it only looks, and leaves the resending to the server thread.
      */
@@ -667,35 +718,34 @@ final class TreePreview implements Listener {
         public void write(ChannelHandlerContext context, Object packet, ChannelPromise promise) throws Exception {
             super.write(context, packet, promise);
             try {
-                Session session = watching.get(viewer);
-                if (session != null) {
-                    check(session, packet);
-                }
+                check(watching.get(viewer), packet);
             } catch (RuntimeException e) {
                 // A preview must never break a connection.
                 plugin.getSLF4JLogger().debug("Could not look at a packet for the preview", e);
             }
         }
 
-        private void check(Session session, Object packet) {
+        private void check(@Nullable Session session, Object packet) {
             switch (packet) {
                 case ClientboundBundlePacket bundle -> bundle.subPackets().forEach(inner -> check(session, inner));
                 case ClientboundLevelChunkWithLightPacket chunk -> {
                     long key = chunkKey(chunk.x(), chunk.z());
-                    if (session.byChunk.containsKey(key)) {
+                    if (session != null && session.byChunk.containsKey(key)) {
                         later(session, () -> {
                             Set<Long> inChunk = session.byChunk.get(key);
                             return inChunk == null ? Set.of() : Set.copyOf(inChunk);
                         }, key);
+                    } else if (modded.contains(viewer)) {
+                        later(null, Set::of, key);
                     }
                 }
-                case ClientboundBlockUpdatePacket block -> {
+                case ClientboundBlockUpdatePacket block when session != null -> {
                     long key = BlockKeys.of(block.getPos().getX(), block.getPos().getY(), block.getPos().getZ());
                     if (overwrites(session, key, block.getBlockState())) {
                         later(session, () -> Set.of(key), null);
                     }
                 }
-                case ClientboundSectionBlocksUpdatePacket section -> {
+                case ClientboundSectionBlocksUpdatePacket section when session != null -> {
                     Set<Long> hit = new HashSet<>();
                     section.runUpdates((position, state) -> {
                         long key = BlockKeys.of(position.getX(), position.getY(), position.getZ());
@@ -719,28 +769,31 @@ final class TreePreview implements Listener {
         }
 
         /**
-         * Sends these ghosts again on the server thread, after what overwrote them - and
-         * a whole chunk's leaf colours, which the client forgot along with the chunk.
+         * Sends these ghosts of a viewer's preview again on the server thread, after what
+         * overwrote them - and a whole chunk's leaf colours, which the client forgot along
+         * with the chunk.
          */
-        private void later(Session session, Supplier<Set<Long>> keys, @Nullable Long chunk) {
+        private void later(@Nullable Session session, Supplier<Set<Long>> keys, @Nullable Long chunk) {
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 Player player = plugin.getServer().getPlayer(viewer);
-                if (player == null || watching.get(viewer) != session
-                        || !player.getWorld().getUID().equals(session.world)) {
+                if (player == null) {
                     return;
                 }
-                Map<Position, BlockData> sent = new HashMap<>();
-                for (long key : keys.get()) {
-                    BlockData ghost = session.ghosts.get(key);
-                    if (ghost != null) {
-                        sent.put(position(key), ghost);
+                Session current = watching.get(viewer);
+                if (session != null && current == session && player.getWorld().getUID().equals(session.world)) {
+                    Map<Position, BlockData> sent = new HashMap<>();
+                    for (long key : keys.get()) {
+                        BlockData ghost = session.ghosts.get(key);
+                        if (ghost != null) {
+                            sent.put(position(key), ghost);
+                        }
+                    }
+                    if (!sent.isEmpty()) {
+                        player.sendMultiBlockChange(sent);
                     }
                 }
-                if (!sent.isEmpty()) {
-                    player.sendMultiBlockChange(sent);
-                }
                 if (chunk != null) {
-                    sendColours(session, player, Set.of(chunk));
+                    sendColours(current, player, Set.of(chunk), false);
                 }
             });
         }
@@ -748,6 +801,7 @@ final class TreePreview implements Listener {
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
+        modded.remove(event.getPlayer().getUniqueId());
         drop(event.getPlayer());
     }
 

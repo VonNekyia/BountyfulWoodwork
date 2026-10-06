@@ -24,6 +24,10 @@ dependencies {
     // clash with the dev bundle's and none of them are needed to compile against it.
     compileOnly(libs.worldedit.core) { isTransitive = false }
     compileOnly(libs.worldedit.bukkit) { isTransitive = false }
+
+    testImplementation(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.launcher)
 }
 
 java {
@@ -31,6 +35,10 @@ java {
 }
 
 tasks {
+    test {
+        useJUnitPlatform()
+    }
+
     build {
         dependsOn(shadowJar)
         finalizedBy("deployToBuildServer")
