@@ -92,6 +92,11 @@ final class LeafColors implements Listener {
     private Map<String, Paint> paints = Map.of();
     /** Chunks to bring up to date, together once the leaves of a felled tree are gone. */
     private final Set<Chunk> pending = new HashSet<>();
+    /**
+     * While a tree is coloured, its other chunks are loaded; they are left for when a
+     * player loads them, else colouring one tree would load the next, through the forest.
+     */
+    private boolean colouring;
 
     LeafColors(JavaPlugin plugin, TreeRegistry registry) {
         this.plugin = plugin;
@@ -172,7 +177,7 @@ final class LeafColors implements Listener {
      * a little later, so the leaves of a felled tree keep their colour while they fall.
      */
     void changed(Chunk chunk) {
-        if (pending.add(chunk) && pending.size() == 1) {
+        if (!colouring && pending.add(chunk) && pending.size() == 1) {
             plugin.getServer().getScheduler().runTaskLater(plugin, this::updatePending,
                     plugin.getConfig().getInt("felling.leaf-decay-ticks", 40) + 1L);
         }
@@ -253,7 +258,13 @@ final class LeafColors implements Listener {
     /** Gives the whole tree its colours, in all of its chunks at once, so that a fade fits together. */
     private void colour(World world, TreePart tree, Set<Chunk> updated) {
         Paint paint = Objects.requireNonNull(paintOf(tree));
-        Map<Long, Material> blocks = registry.blocksOf(world, tree);
+        Map<Long, Material> blocks;
+        colouring = true;
+        try {
+            blocks = registry.blocksOf(world, tree);
+        } finally {
+            colouring = false;
+        }
         Crown crown = paint instanceof Fade ? crown(blocks) : null;
 
         Map<Long, Map<Integer, Integer>> byChunk = new HashMap<>();
