@@ -424,14 +424,20 @@ final class LeafColors implements Listener {
             }
             Map<Integer, Integer> colors = new HashMap<>();
             int groups = in.readInt();
+            if (groups < 0) {
+                return null;
+            }
             for (int group = 0; group < groups; group++) {
                 int color = in.readInt();
                 int count = in.readInt();
+                if (count < 0) {
+                    return null;
+                }
                 for (int i = 0; i < count; i++) {
                     colors.put(in.readInt(), color);
                 }
             }
-            return in.available() == 0 && groups >= 0 ? colors : null;
+            return in.available() == 0 ? colors : null;
         } catch (IOException e) {
             return null;
         }
