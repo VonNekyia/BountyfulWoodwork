@@ -691,11 +691,13 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
         }
     }
 
-    /** Whether this is someone opening a preview shared with them, or closing it. */
+    /**
+     * Whether this is someone opening a preview shared with them, or closing it: a hash as
+     * it came, nothing added - limit, place and all are what whoever made it chose.
+     */
     private static boolean opensSharedPreview(String[] args) {
-        return args.length >= 2 && args[0].equalsIgnoreCase("preview")
-                && (args[1].equalsIgnoreCase("clear") || args[1].startsWith("#")
-                || Arrays.stream(args).anyMatch(argument -> argument.equalsIgnoreCase("--seed")));
+        return args.length == 2 && args[0].equalsIgnoreCase("preview")
+                && (args[1].equalsIgnoreCase("clear") || args[1].startsWith("#"));
     }
 
     /**
@@ -749,9 +751,8 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
                 player.sendMessage(Component.text("Open a preview first; that one is what gets sent.",
                         NamedTextColor.RED));
             } else {
-                // By hash: a long spec with seed and place would not fit into a command.
-                int seed = shared.indexOf(" --seed ");
-                String link = "/ta preview #" + library.hash(shared.substring(0, seed)) + shared.substring(seed);
+                // One hash for spec, seed and place: short, and nothing to add to it.
+                String link = "/ta preview #" + library.hash(shared);
                 target.sendMessage(Component.text(player.getName() + " shares a tree preview with you. ",
                                 NamedTextColor.GREEN)
                         .append(Component.text("[Show it]", NamedTextColor.AQUA)
