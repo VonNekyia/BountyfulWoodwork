@@ -14,7 +14,7 @@ repositories {
 val testServerPluginFolder: Provider<Directory> =
     providers.gradleProperty("testServerPluginFolder")
         .map { layout.projectDirectory.dir(it) }
-        .orElse(layout.projectDirectory.dir("../server-terranova/servers/main/plugins"))
+        .orElse(layout.projectDirectory.dir("../../server-terranova/servers/main/plugins"))
 
 dependencies {
     paperweight.paperDevBundle(libs.versions.paper.api.get())
@@ -28,6 +28,11 @@ dependencies {
 
 java {
     toolchain.languageVersion = JavaLanguageVersion.of(25)
+}
+
+// The plugin keeps the repository's name, so the jar in the server stays the same.
+base {
+    archivesName = "BountyfulWoodwork"
 }
 
 tasks {

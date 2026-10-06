@@ -15,7 +15,7 @@ repositories {
 val buildServerPluginFolder: Provider<Directory> =
     providers.gradleProperty("buildServerPluginFolder")
         .map { layout.projectDirectory.dir(it) }
-        .orElse(layout.projectDirectory.dir("../server-terranova/servers/build/plugins"))
+        .orElse(layout.projectDirectory.dir("../../server-terranova/servers/build/plugins"))
 
 dependencies {
     paperweight.paperDevBundle(libs.versions.paper.api.get())

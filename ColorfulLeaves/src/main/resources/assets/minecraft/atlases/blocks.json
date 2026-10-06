@@ -1,0 +1,74 @@
+{
+  "sources": [
+    {
+      "type": "minecraft:paletted_permutations",
+      "textures": [
+        "minecraft:block/oak_leaves"
+      ],
+      "palette_key": "colorfulleaves:oak_leaves",
+      "permutations": {
+        "colorfulleaves_bright": "colorfulleaves:oak_leaves_bright"
+      }
+    },
+    {
+      "type": "minecraft:paletted_permutations",
+      "textures": [
+        "minecraft:block/spruce_leaves"
+      ],
+      "palette_key": "colorfulleaves:spruce_leaves",
+      "permutations": {
+        "colorfulleaves_bright": "colorfulleaves:spruce_leaves_bright"
+      }
+    },
+    {
+      "type": "minecraft:paletted_permutations",
+      "textures": [
+        "minecraft:block/birch_leaves"
+      ],
+      "palette_key": "colorfulleaves:birch_leaves",
+      "permutations": {
+        "colorfulleaves_bright": "colorfulleaves:birch_leaves_bright"
+      }
+    },
+    {
+      "type": "minecraft:paletted_permutations",
+      "textures": [
+        "minecraft:block/jungle_leaves"
+      ],
+      "palette_key": "colorfulleaves:jungle_leaves",
+      "permutations": {
+        "colorfulleaves_bright": "colorfulleaves:jungle_leaves_bright"
+      }
+    },
+    {
+      "type": "minecraft:paletted_permutations",
+      "textures": [
+        "minecraft:block/acacia_leaves"
+      ],
+      "palette_key": "colorfulleaves:acacia_leaves",
+      "permutations": {
+        "colorfulleaves_bright": "colorfulleaves:acacia_leaves_bright"
+      }
+    },
+    {
+      "type": "minecraft:paletted_permutations",
+      "textures": [
+        "minecraft:block/dark_oak_leaves"
+      ],
+      "palette_key": "colorfulleaves:dark_oak_leaves",
+      "permutations": {
+        "colorfulleaves_bright": "colorfulleaves:dark_oak_leaves_bright"
+      }
+    },
+    {
+      "type": "minecraft:paletted_permutations",
+      "textures": [
+        "minecraft:block/mangrove_leaves"
+      ],
+      "palette_key": "colorfulleaves:mangrove_leaves",
+      "permutations": {
+        "colorfulleaves_bright": "colorfulleaves:mangrove_leaves_bright"
+      }
+    }
+  ]
+}

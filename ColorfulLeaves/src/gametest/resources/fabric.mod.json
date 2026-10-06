@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "colorfulleaves-pictures",
+  "version": "1.0.0",
+  "name": "ColorfulLeaves pictures",
+  "environment": "client",
+  "entrypoints": {
+    "fabric-client-gametest": [
+      "com.nekyia.colorfulleaves.Pictures"
+    ]
+  },
+  "depends": {
+    "colorfulleaves": "*"
+  }
+}

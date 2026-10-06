@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "colorfulleaves",
+  "version": "${version}",
+  "name": "ColorfulLeaves",
+  "description": "Shows the leaf colours Terranova's trees carry. The servers say which leaves get which colour; without the mod, leaves look as usual.",
+  "authors": [
+    "gerryxn"
+  ],
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "com.nekyia.colorfulleaves.ColorfulLeaves"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "~26.3",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}

@@ -1,14 +1,30 @@
 [versions]
-paper-api = "26.3.build.38-alpha"
+# The Minecraft version the Terranova servers run; the rest to match.
 minecraft = "26.3"
-
+paper-api = "26.3.build.38-alpha"
+# The API only; the server runs a newer 7.4.x build (FastAsyncWorldEdit would provide it too).
+worldedit = "7.4.0"
 paperweight-userdev = "2.0.0-beta.23"
 shadow = "9.6.1"
 run-task = "3.1.0"
+# See https://fabricmc.net/develop
+fabric-loader = "0.19.5"
+fabric-api = "0.161.0+26.3"
+fabric-loom = "1.18-SNAPSHOT"
+junit = "6.1.3"
 
 [libraries]
+worldedit-core = { module = "com.sk89q.worldedit:worldedit-core", version.ref = "worldedit" }
+worldedit-bukkit = { module = "com.sk89q.worldedit:worldedit-bukkit", version.ref = "worldedit" }
+minecraft = { module = "com.mojang:minecraft", version.ref = "minecraft" }
+fabric-loader = { module = "net.fabricmc:fabric-loader", version.ref = "fabric-loader" }
+fabric-api = { module = "net.fabricmc.fabric-api:fabric-api", version.ref = "fabric-api" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 
 [plugins]
 paperweight-userdev = { id = "io.papermc.paperweight.userdev", version.ref = "paperweight-userdev" }
 shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
 run-paper = { id = "xyz.jpenilla.run-paper", version.ref = "run-task" }
+fabric-loom = { id = "net.fabricmc.fabric-loom", version.ref = "fabric-loom" }
