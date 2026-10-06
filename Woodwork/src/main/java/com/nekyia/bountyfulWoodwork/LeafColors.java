@@ -60,13 +60,12 @@ final class LeafColors implements Listener {
     /** Bit 24 of a colour: the mod draws these leaves on their lighter texture. */
     private static final int BRIGHT = 1 << 24;
 
-    /**
-     * The leaves the mod can colour - the others have their colour in the texture. Bushes
-     * in a crown keep their own green.
-     */
+    /** The leaves the mod can colour. Bushes in a crown keep their own green. */
     private static final Set<Material> TINTED = EnumSet.of(Material.OAK_LEAVES, Material.SPRUCE_LEAVES,
             Material.BIRCH_LEAVES, Material.JUNGLE_LEAVES, Material.ACACIA_LEAVES, Material.DARK_OAK_LEAVES,
-            Material.MANGROVE_LEAVES);
+            Material.MANGROVE_LEAVES, Material.AZALEA_LEAVES, Material.FLOWERING_AZALEA_LEAVES,
+            Material.CHERRY_LEAVES, Material.PALE_OAK_LEAVES, Material.RED_POPLAR_LEAVES,
+            Material.ORANGE_POPLAR_LEAVES, Material.YELLOW_POPLAR_LEAVES);
 
     /** How the leaves of a tree type are coloured. */
     private sealed interface Paint permits Solid, Fade {

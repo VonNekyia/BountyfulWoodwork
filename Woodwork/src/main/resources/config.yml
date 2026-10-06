@@ -54,8 +54,7 @@ felling:
 
 # Leaf colours for players with the ColorfulLeaves client mod and the map, by tree type,
 # or by the id of an archived tree, which goes first. Everyone else, and types without
-# an entry, see the usual leaves - as does everyone for azalea, cherry, pale oak and
-# poplar leaves, whose colour is in their texture.
+# an entry, see the usual leaves. Flowering azalea keeps its flowers.
 # A tree takes its colour from here once, the first time it is seen with leaves and
 # without colours, and keeps it in the world's data from then on: changing a colour
 # here, even with /bw reload, only colours trees that have none yet. Trees from the
