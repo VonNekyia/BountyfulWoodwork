@@ -44,7 +44,9 @@ final class LeafColours {
     /** The leaves the mod can colour; bushes in a crown keep their own green. */
     static final Set<Material> TINTED = EnumSet.of(Material.OAK_LEAVES, Material.SPRUCE_LEAVES,
             Material.BIRCH_LEAVES, Material.JUNGLE_LEAVES, Material.ACACIA_LEAVES, Material.DARK_OAK_LEAVES,
-            Material.MANGROVE_LEAVES);
+            Material.MANGROVE_LEAVES, Material.AZALEA_LEAVES, Material.FLOWERING_AZALEA_LEAVES,
+            Material.CHERRY_LEAVES, Material.PALE_OAK_LEAVES, Material.RED_POPLAR_LEAVES,
+            Material.ORANGE_POPLAR_LEAVES, Material.YELLOW_POPLAR_LEAVES);
 
     private LeafColours() {
     }
