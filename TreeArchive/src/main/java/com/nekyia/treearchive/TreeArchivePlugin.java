@@ -21,6 +21,7 @@ public final class TreeArchivePlugin extends JavaPlugin {
         archive.reload();
 
         TreePaster paster = new TreePaster(this);
+        getServer().getMessenger().registerOutgoingPluginChannel(this, LeafColours.CHANNEL);
         TreePreview preview = new TreePreview(this, archive, paster);
         TreeBrush brush = new TreeBrush(this, archive, paster, preview);
         DebugGeneration debug = new DebugGeneration(this, archive, paster);
@@ -34,7 +35,7 @@ public final class TreeArchivePlugin extends JavaPlugin {
         TrunkPosCommand trunkPos = new TrunkPosCommand();
         Objects.requireNonNull(getCommand("/trunkpos")).setExecutor(trunkPos);
 
-        ArchiveCommand command = new ArchiveCommand(brush, debug, archive,
+        ArchiveCommand command = new ArchiveCommand(new PreviewLibrary(this), brush, debug, archive,
                 new TreeLayout(this, archive, paster), new TreeForest(this, archive, paster),
                 new TreeDuplicates(this, archive), preview, trunkPos);
         PluginCommand ta = Objects.requireNonNull(getCommand("ta"));

@@ -125,14 +125,16 @@ final class TreeBrush implements Listener {
             marker(player, base, spec, what);
             return;
         }
-        TreeArchive.Entry entry = trees(category, what).pick(archive.entries());
+        TreeSelection trees = trees(category, what);
+        TreeSelection.Pick pick = trees.draw(archive.entries(), ThreadLocalRandom.current());
+        TreeArchive.Entry entry = pick == null ? null : pick.entry();
         Clipboard clipboard = entry == null ? null : archive.clipboard(entry);
         if (clipboard == null) {
             player.sendActionBar(Component.text("No archived tree matches '" + selection + "'.",
                     NamedTextColor.RED));
             return;
         }
-        if (!paster.paste(entry.type(), clipboard, base, player)) {
+        if (!paster.paste(entry.type(), clipboard, base, player, false, pick.modifiers())) {
             player.sendActionBar(Component.text("The tree would collide with blocks there.", NamedTextColor.RED));
         }
     }

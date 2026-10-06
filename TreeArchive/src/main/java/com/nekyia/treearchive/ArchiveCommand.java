@@ -12,9 +12,12 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.UUID;
 import java.util.stream.Stream;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -49,6 +52,18 @@ import org.jspecify.annotations.Nullable;
  */
 final class ArchiveCommand implements CommandExecutor, TabCompleter {
 
+    /** Words that follow /ta preview preset and so cannot name a preset. */
+    private static final List<String> PRESET_WORDS = List.of("add", "remove", "user", "namespace");
+
+    /**
+     * A preset as written: name for one of your own, player:name for someone else's - to
+     * look at, not to change - and namespace@name for one in a namespace everyone shares.
+     */
+    private record PresetName(PreviewLibrary.Shelf shelf, String name) {
+    }
+
+    private final PreviewLibrary library;
+
     private final TreeBrush brush;
     private final DebugGeneration debug;
     private final TreeArchive archive;
@@ -58,10 +73,11 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
     private final TreePreview preview;
     private final TrunkPosCommand trunkPos;
 
-    ArchiveCommand(TreeBrush brush,
+    ArchiveCommand(PreviewLibrary library, TreeBrush brush,
                     DebugGeneration debug, TreeArchive archive, TreeLayout layout,
                     TreeForest forest, TreeDuplicates duplicates, TreePreview preview,
                     TrunkPosCommand trunkPos) {
+        this.library = library;
         this.brush = brush;
         this.debug = debug;
         this.archive = archive;
@@ -83,6 +99,10 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
         }
         if (args.length >= 1 && args[0].equalsIgnoreCase("preview")) {
             preview(sender, args);
+            return true;
+        }
+        if (args.length == 2 && args[0].equalsIgnoreCase("decode")) {
+            decode(sender, args[1]);
             return true;
         }
         if (args.length == 1 && args[0].equalsIgnoreCase("reload")) {
@@ -455,6 +475,60 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
         }
     }
 
+    /** What may follow /ta preview, word by word. */
+    private Stream<String> previewOptions(Player player, String[] args) {
+        String last = args[args.length - 1];
+        if (args.length == 2) {
+            return Stream.concat(Stream.of("player", "clear", "preset"), specOptions(last));
+        }
+        String sub = args[1].toLowerCase(Locale.ROOT);
+        if (sub.equals("player")) {
+            return args.length == 3 ? player.getServer().getOnlinePlayers().stream().map(Player::getName) : Stream.empty();
+        }
+        if (sub.equals("clear")) {
+            return Stream.empty();
+        }
+        if (sub.equals("preset")) {
+            List<String> presets = Stream.concat(library.presets(PreviewLibrary.Shelf.of(player.getUniqueId())).stream(),
+                    library.namespaces().stream().flatMap(namespace -> library.presets(PreviewLibrary.Shelf.namespace(namespace))
+                            .stream().map(name -> namespace + "@" + name))).toList();
+            if (args.length == 3) {
+                return Stream.concat(PRESET_WORDS.stream(), presets.stream());
+            }
+            String action = args[2].toLowerCase(Locale.ROOT);
+            if (action.equals("user")) {
+                return args.length == 4 ? player.getServer().getOnlinePlayers().stream().map(Player::getName)
+                        : Stream.empty();
+            }
+            if (action.equals("namespace")) {
+                return args.length == 4 ? library.namespaces().stream() : Stream.empty();
+            }
+            if (action.equals("add") || action.equals("remove")) {
+                if (args.length == 4) {
+                    return presets.stream();
+                }
+                if (args.length == 5) {
+                    Stream<String> flags = Stream.of("--continuous", "--bypassterrain", "--limit");
+                    if (action.equals("add")) {
+                        return Stream.concat(specOptions(last), flags);
+                    }
+                    String written = args[3].toLowerCase(Locale.ROOT);
+                    int at = written.indexOf('@');
+                    List<String> parts = at >= 0
+                            ? library.preset(PreviewLibrary.Shelf.namespace(written.substring(0, at)), written.substring(at + 1))
+                            : library.preset(PreviewLibrary.Shelf.of(player.getUniqueId()), written);
+                    return parts == null ? Stream.empty() : parts.stream().flatMap(part -> PreviewLibrary.isFlag(part)
+                            ? Stream.of(part.split(" ")[0])
+                            : PreviewSpec.parse(part).markers().stream().map(block -> block.getKey().getKey()));
+                }
+                return Stream.empty();
+            }
+        }
+        // Flags, behind a spec, a preset or a hash.
+        return args[args.length - 2].equalsIgnoreCase("--limit") ? Stream.of("100", "300", "500", "1000")
+                : Stream.of("--continuous", "--limit", "--bypassterrain");
+    }
+
     /** Every block a marker may be, by name. */
     private static final List<String> BLOCKS = Arrays.stream(Material.values())
             .filter(material -> material.isBlock() && !material.isAir() && !material.isLegacy())
@@ -473,8 +547,21 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
         int colon = lower.indexOf(':', slash + 1);
         boolean blocks = colon < 0;
         int start = Math.max(lower.lastIndexOf(','), blocks ? slash : colon) + 1;
+        String word = lower.substring(start);
+        if (!blocks && (word.contains("*") || word.contains("&"))) {
+            // A colour is being written, or modifiers behind the tree.
+            int ampersand = word.lastIndexOf('&');
+            if (ampersand < 0) {
+                return Stream.of(">", "&", ",", "/").map(next -> lower + next);
+            }
+            String head = lower.substring(0, start + ampersand + 1);
+            String partial = word.substring(ampersand + 1);
+            return TreeSelection.MODIFIERS.contains(partial)
+                    ? Stream.of("&", ",", "/").map(next -> lower + next)
+                    : TreeSelection.MODIFIERS.stream().filter(modifier -> modifier.startsWith(partial)).map(head::concat);
+        }
         return wordOptions(lower, start, blocks ? BLOCKS : filters().toList(),
-                blocks ? List.of(":", ",") : List.of(",", "/"));
+                blocks ? List.of(":", ",") : List.of(",", "/", "*", "&"));
     }
 
     /** Completes a plain comma list like birch,70%oak from these names. */
@@ -607,12 +694,19 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
     /** Whether this is someone opening a preview shared with them, or closing it. */
     private static boolean opensSharedPreview(String[] args) {
         return args.length >= 2 && args[0].equalsIgnoreCase("preview")
-                && (args[1].equalsIgnoreCase("clear")
+                && (args[1].equalsIgnoreCase("clear") || args[1].startsWith("#")
                 || Arrays.stream(args).anyMatch(argument -> argument.equalsIgnoreCase("--seed")));
     }
 
     /**
-     * /ta preview blocks:trees/... - shows a forest on the markers of the preview world.
+     * /ta preview blocks:trees/... [--continuous] [--limit n] [--bypassterrain] - shows a
+     * forest on the markers around you; continuous keeps growing trees on chunks loaded
+     * later, up to the limit (preview.max-trees unless --limit gives another), and
+     * bypassterrain grows every tree, whatever stands in its way. A tree written
+     * beech*#d98c2b gets that leaf colour for players with the ColorfulLeaves mod, and
+     * beech*#f5d130>#c0392b a fade up the crown, or out of it with &out; modifiers
+     * follow per tree, beech*#ffffff&bright putting its leaves on their lighter texture,
+     * beech&mistle hanging mistletoe in its crown and beech&drymistle dry mistletoe.
      * /ta preview player name - sends someone a link to the preview you are looking at.
      * /ta preview clear - takes the preview away again.
      */
@@ -622,9 +716,24 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
             return;
         }
         if (args.length == 1) {
-            player.sendMessage(Component.text("Usage: /ta preview <blocks:trees/...> | player <name> | clear."
+            player.sendMessage(Component.text("Usage: /ta preview <blocks:trees/...> [--continuous] [--limit <trees>]"
+                    + " [--bypassterrain] | #<hash> | preset [...] | player <name> | clear."
                     + " Example: gold_block:silver_fir,white_pine/diamond_block:beech", NamedTextColor.RED));
             return;
+        }
+        if (args[1].equalsIgnoreCase("preset")) {
+            String[] expanded = preset(player, args);
+            if (expanded == null) {
+                return;
+            }
+            args = expanded;
+        } else if (args[1].startsWith("#")) {
+            String arguments = library.unhash(args[1].substring(1).toLowerCase(Locale.ROOT));
+            if (arguments == null) {
+                player.sendMessage(Component.text("No preview is known as " + args[1] + ".", NamedTextColor.RED));
+                return;
+            }
+            args = join(new String[] {"preview"}, arguments.split(" "), Arrays.copyOfRange(args, 2, args.length));
         }
         if (args[1].equalsIgnoreCase("clear")) {
             preview.clear(player);
@@ -640,11 +749,14 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
                 player.sendMessage(Component.text("Open a preview first; that one is what gets sent.",
                         NamedTextColor.RED));
             } else {
+                // By hash: a long spec with seed and place would not fit into a command.
+                int seed = shared.indexOf(" --seed ");
+                String link = "/ta preview #" + library.hash(shared.substring(0, seed)) + shared.substring(seed);
                 target.sendMessage(Component.text(player.getName() + " shares a tree preview with you. ",
                                 NamedTextColor.GREEN)
                         .append(Component.text("[Show it]", NamedTextColor.AQUA)
-                                .clickEvent(ClickEvent.runCommand("/ta preview " + shared))
-                                .hoverEvent(HoverEvent.showText(Component.text(shared)))));
+                                .clickEvent(ClickEvent.runCommand(link))
+                                .hoverEvent(HoverEvent.showText(Component.text(link)))));
                 player.sendMessage(Component.text("Sent " + target.getName() + " your preview.",
                         NamedTextColor.GREEN));
             }
@@ -657,10 +769,22 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
         World world = player.getWorld();
         int x = player.getLocation().getBlockX();
         int z = player.getLocation().getBlockZ();
+        boolean continuous = false;
+        boolean bypassTerrain = false;
+        int limit = 0;
         StringBuilder text = new StringBuilder();
         try {
             for (int i = 1; i < args.length; i++) {
-                if (args[i].equalsIgnoreCase("--seed") && i + 1 < args.length) {
+                if (args[i].equalsIgnoreCase("--continuous")) {
+                    continuous = true;
+                } else if (args[i].equalsIgnoreCase("--bypassterrain")) {
+                    bypassTerrain = true;
+                } else if (args[i].equalsIgnoreCase("--limit") && i + 1 < args.length) {
+                    limit = Integer.parseInt(args[++i]);
+                    if (limit < 1) {
+                        throw new NumberFormatException();
+                    }
+                } else if (args[i].equalsIgnoreCase("--seed") && i + 1 < args.length) {
                     seed = Long.parseLong(args[++i]);
                 } else if (args[i].equalsIgnoreCase("--at") && i + 1 < args.length) {
                     String[] at = args[++i].split(",");
@@ -677,7 +801,7 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
                 }
             }
         } catch (NumberFormatException e) {
-            player.sendMessage(Component.text("Seeds and places are whole numbers.", NamedTextColor.RED));
+            player.sendMessage(Component.text("Seeds, places and limits are whole numbers.", NamedTextColor.RED));
             return;
         }
         PreviewSpec spec;
@@ -687,7 +811,190 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
             player.sendMessage(Component.text("Cannot read that: " + e.getMessage() + ".", NamedTextColor.RED));
             return;
         }
-        preview.show(player, text.toString(), spec, seed, world, x, z);
+        TreePreview.Options options = new TreePreview.Options(continuous, limit, bypassTerrain);
+        preview.show(player, text.toString(), spec, seed, world, x, z, options);
+        // A short name to keep it by and share it with: spec and flags, without seed and place.
+        String kept = "/ta preview #" + library.hash(text + options.written());
+        player.sendMessage(Component.text("Also as " + kept + " ", NamedTextColor.GRAY)
+                .append(Component.text("[copy]", NamedTextColor.AQUA)
+                        .clickEvent(ClickEvent.copyToClipboard(kept))
+                        .hoverEvent(HoverEvent.showText(Component.text("Copy " + kept)))));
+    }
+
+    /**
+     * /ta preview preset - your presets; user player - someone's; namespace [name] - the
+     * namespaces, or one's presets; add preset part - one block's part, or one flag, into a
+     * preset, in place of an earlier one for the same; remove preset [block|--flag]; and a
+     * preset with flags - its preview. A preset is written name, player:name or namespace@name.
+     *
+     * @return the arguments of the preview a preset stands for, or null when there is none to show
+     */
+    private String @Nullable [] preset(Player player, String[] args) {
+        String action = args.length > 2 ? args[2].toLowerCase(Locale.ROOT) : "";
+        if (args.length == 2) {
+            list(player, PreviewLibrary.Shelf.of(player.getUniqueId()), "", "You have no presets yet."
+                    + " /ta preview preset add <name> <block:trees> starts one.");
+            return null;
+        }
+        if (action.equals("user") && args.length == 4) {
+            UUID owner = library.owner(args[3]);
+            if (owner == null) {
+                player.sendMessage(Component.text(args[3] + " has no presets.", NamedTextColor.RED));
+            } else {
+                list(player, PreviewLibrary.Shelf.of(owner), library.ownerName(owner) + ":", args[3] + " has no presets.");
+            }
+            return null;
+        }
+        if (action.equals("namespace") && args.length <= 4) {
+            if (args.length == 4) {
+                String namespace = args[3].toLowerCase(Locale.ROOT);
+                list(player, PreviewLibrary.Shelf.namespace(namespace), namespace + "@",
+                        "There is no namespace " + namespace + ".");
+                return null;
+            }
+            Component list = Component.text("Namespaces:", NamedTextColor.GREEN);
+            for (String namespace : library.namespaces()) {
+                list = list.append(Component.text(" " + namespace, NamedTextColor.AQUA)
+                        .clickEvent(ClickEvent.runCommand("/ta preview preset namespace " + namespace)));
+            }
+            player.sendMessage(library.namespaces().isEmpty() ? Component.text("No namespaces yet;"
+                    + " /ta preview preset add <namespace>@<name> <block:trees> starts one.", NamedTextColor.RED) : list);
+            return null;
+        }
+        if ((action.equals("add") && args.length >= 5) || (action.equals("remove") && (args.length == 4 || args.length == 5))) {
+            PresetName preset = presetName(player, args[3]);
+            if (preset == null) {
+                return null;
+            }
+            UUID owner = preset.shelf().player();
+            if (owner != null && !owner.equals(player.getUniqueId())) {
+                player.sendMessage(Component.text("Only " + library.ownerName(owner) + " changes their presets;"
+                        + " namespaces are for presets made together.", NamedTextColor.RED));
+                return null;
+            }
+            if (action.equals("add")) {
+                boolean flag = PreviewLibrary.isFlag(args[4]);
+                String part = String.join(flag ? " " : "", Arrays.copyOfRange(args, 4, args.length)).toLowerCase(Locale.ROOT);
+                try {
+                    if (flag ? !part.matches("--continuous|--bypassterrain|--limit [1-9][0-9]*")
+                            : PreviewSpec.parse(part).parts().size() != 1) {
+                        throw new IllegalArgumentException("add one block at a time, without a /, or one flag"
+                                + " alone: --continuous, --bypassterrain or --limit <trees>");
+                    }
+                } catch (IllegalArgumentException e) {
+                    player.sendMessage(Component.text("Cannot read that: " + e.getMessage() + ".", NamedTextColor.RED));
+                    return null;
+                }
+                library.add(preset.shelf(), player, preset.name(), part);
+                player.sendMessage(Component.text("Preset " + args[3] + " is now "
+                        + written(Objects.requireNonNull(library.preset(preset.shelf(), preset.name())))
+                        + " - /ta preview preset " + args[3] + " shows it.", NamedTextColor.GREEN));
+                return null;
+            }
+            String what = args.length == 5 ? args[4].toLowerCase(Locale.ROOT) : null;
+            if (what != null && !PreviewLibrary.isFlag(what) && Material.matchMaterial(what) == null) {
+                player.sendMessage(Component.text("'" + what + "' is neither a block nor a flag.", NamedTextColor.RED));
+            } else if (library.remove(preset.shelf(), preset.name(), what)) {
+                player.sendMessage(Component.text(what == null ? "Removed the preset " + args[3] + "."
+                        : "Took " + what + " out of " + args[3] + ".", NamedTextColor.GREEN));
+            } else {
+                player.sendMessage(Component.text("Nothing like that in " + args[3] + ".", NamedTextColor.RED));
+            }
+            return null;
+        }
+        if (PRESET_WORDS.contains(action)) {
+            player.sendMessage(Component.text("Usage: /ta preview preset [add <preset> <block:trees>|<--flag>"
+                    + " | remove <preset> [block|--flag] | user <player> | namespace [name] | <preset>],"
+                    + " a preset written name, player:name or namespace@name", NamedTextColor.RED));
+            return null;
+        }
+        PresetName preset = presetName(player, args[2]);
+        List<String> parts = preset == null ? null : library.preset(preset.shelf(), preset.name());
+        if (parts == null || parts.stream().allMatch(PreviewLibrary::isFlag)) {
+            if (preset != null) {
+                player.sendMessage(Component.text("There is no preset " + args[2] + " with blocks.", NamedTextColor.RED));
+            }
+            return null;
+        }
+        String[] spec = written(parts).split(" ");
+        return join(new String[] {"preview"}, spec, Arrays.copyOfRange(args, 3, args.length));
+    }
+
+    /** A preset's name as written, or null - with the player told why - when it cannot be one. */
+    private @Nullable PresetName presetName(Player player, String written) {
+        String lower = written.toLowerCase(Locale.ROOT);
+        int at = lower.indexOf('@');
+        int colon = lower.indexOf(':');
+        PreviewLibrary.Shelf shelf;
+        String name;
+        if (at >= 0) {
+            shelf = PreviewLibrary.Shelf.namespace(lower.substring(0, at));
+            name = lower.substring(at + 1);
+        } else if (colon >= 0) {
+            UUID owner = library.owner(written.substring(0, colon));
+            if (owner == null) {
+                player.sendMessage(Component.text(written.substring(0, colon) + " has no presets.", NamedTextColor.RED));
+                return null;
+            }
+            shelf = PreviewLibrary.Shelf.of(owner);
+            name = lower.substring(colon + 1);
+        } else {
+            shelf = PreviewLibrary.Shelf.of(player.getUniqueId());
+            name = lower;
+        }
+        boolean named = name.matches("[a-z0-9_-]+") && !PRESET_WORDS.contains(name)
+                && (shelf.namespace() == null || shelf.namespace().matches("[a-z0-9_-]+"));
+        if (!named) {
+            player.sendMessage(Component.text("Presets and namespaces are named with letters, digits, _ and -.",
+                    NamedTextColor.RED));
+            return null;
+        }
+        return new PresetName(shelf, name);
+    }
+
+    /** Lists a shelf's presets, each a click away; prefix is how they are written from here. */
+    private void list(Player player, PreviewLibrary.Shelf shelf, String prefix, String none) {
+        Set<String> names = library.presets(shelf);
+        if (names.isEmpty()) {
+            player.sendMessage(Component.text(none, NamedTextColor.RED));
+            return;
+        }
+        String whose = shelf.namespace() != null ? "namespace " + shelf.namespace()
+                : library.ownerName(Objects.requireNonNull(shelf.player()));
+        Component list = Component.text("Presets of " + whose + ":", NamedTextColor.GREEN);
+        for (String name : names) {
+            list = list.append(Component.text(" " + name, NamedTextColor.AQUA)
+                    .clickEvent(ClickEvent.runCommand("/ta preview preset " + prefix + name))
+                    .hoverEvent(HoverEvent.showText(Component.text(
+                            written(Objects.requireNonNull(library.preset(shelf, name)))))));
+        }
+        player.sendMessage(list);
+    }
+
+    /** A preset as a preview's arguments: its blocks' parts joined by slashes, then its flags. */
+    private static String written(List<String> parts) {
+        return String.join(" ", Stream.concat(
+                Stream.of(String.join("/", parts.stream().filter(part -> !PreviewLibrary.isFlag(part)).toList())),
+                parts.stream().filter(PreviewLibrary::isFlag)).toList());
+    }
+
+    /** /ta decode hash - the preview command behind a hash, to copy. */
+    private void decode(CommandSender sender, String written) {
+        String hash = written.replace("#", "").toLowerCase(Locale.ROOT);
+        String arguments = library.unhash(hash);
+        if (arguments == null) {
+            sender.sendMessage(Component.text("No preview is known as #" + hash + ".", NamedTextColor.RED));
+            return;
+        }
+        String command = "/ta preview " + arguments;
+        sender.sendMessage(Component.text("#" + hash + " is ", NamedTextColor.GREEN)
+                .append(Component.text(command, NamedTextColor.WHITE)
+                        .clickEvent(ClickEvent.copyToClipboard(command))
+                        .hoverEvent(HoverEvent.showText(Component.text("Click to copy")))));
+    }
+
+    private static String[] join(String[]... pieces) {
+        return Arrays.stream(pieces).flatMap(Arrays::stream).filter(piece -> !piece.isEmpty()).toArray(String[]::new);
     }
 
     /** /ta layout [categorized] [trees] - puts the archive on the ground. */
@@ -818,12 +1125,16 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
         if (!sender.hasPermission(TreeBrush.PERMISSION)) {
             return List.of();
         }
+        if (args.length >= 2 && args[0].equalsIgnoreCase("preview") && sender instanceof Player player) {
+            String typed = args[args.length - 1].toLowerCase(Locale.ROOT);
+            return previewOptions(player, args).filter(option -> option.toLowerCase(Locale.ROOT).startsWith(typed))
+                    .toList();
+        }
         Stream<String> options = switch (args.length) {
             case 1 -> Stream.of("reload", "brush", "debug", "type", "trunkpos", "archive", "list",
-                    "duplicates", "resort", "recreator", "patreon", "layout", "preview", "forest");
+                    "duplicates", "resort", "recreator", "patreon", "layout", "preview", "forest", "decode");
             case 2 -> switch (args[0].toLowerCase(Locale.ROOT)) {
                 case "brush" -> Stream.concat(BRUSH_CATEGORIES.stream(), Stream.of("clear"));
-                case "preview" -> Stream.concat(Stream.of("player", "clear"), specOptions(args[1]));
                 case "archive" -> archive.types().stream();
                 // Only "remove": here a type is being named, usually a new one.
                 case "type" -> Stream.of("remove");
@@ -862,9 +1173,6 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
                         case "block" -> specOptions(args[2]);
                         default -> Stream.empty();
                     };
-                }
-                if (args[0].equalsIgnoreCase("preview") && args[1].equalsIgnoreCase("player")) {
-                    yield sender.getServer().getOnlinePlayers().stream().map(Player::getName);
                 }
                 yield args[0].equalsIgnoreCase("archive") ? creators(sender) : Stream.empty();
             }

@@ -15,6 +15,9 @@ import org.jspecify.annotations.Nullable;
  * {@link TreeSelection} reads them. Several blocks may share their trees
  * ({@code gold_block,diamond_block:beech}), blocks may carry shares like trees do
  * ({@code 70%gold_block,30%diamond_block}), and a part without a colon means any tree.
+ * A tree may carry a leaf colour for the ColorfulLeaves mod, {@code gold_block:beech*#d98c2b},
+ * or a fade, {@code beech*#f5d130>#c0392b}, and behind it modifiers for that tree:
+ * {@code beech*#ffffff&bright}.
  */
 record PreviewSpec(List<Part> parts) {
 
@@ -49,8 +52,29 @@ record PreviewSpec(List<Part> parts) {
             if (materials.isEmpty()) {
                 throw new IllegalArgumentException("'" + piece + "' names no block");
             }
-            parts.add(new Part(materials, weights,
-                    colon < 0 ? null : TreeSelection.parse(piece.substring(colon + 1))));
+            TreeSelection trees = colon < 0 ? null : TreeSelection.parse(piece.substring(colon + 1));
+            if (trees != null) {
+                for (TreeSelection.Part tree : trees.parts()) {
+                    int star = tree.word().indexOf('*');
+                    if (star >= 0) {
+                        throw new IllegalArgumentException("'" + tree.word().substring(star + 1)
+                                + "' is not a colour like #d98c2b");
+                    }
+                    for (String modifier : tree.modifiers()) {
+                        if (!TreeSelection.MODIFIERS.contains(modifier)) {
+                            throw new IllegalArgumentException("'&" + modifier + "' is not a modifier; there is "
+                                    + String.join(", ", TreeSelection.MODIFIERS.stream().map(m -> "&" + m).toList()));
+                        }
+                    }
+                    for (String modifier : List.of("bright", "out")) {
+                        if (tree.colours() == null && tree.modifiers().contains(modifier)) {
+                            throw new IllegalArgumentException("&" + modifier + " goes behind a colour, like "
+                                    + tree.word() + "*#f5d130>#c0392b&" + modifier);
+                        }
+                    }
+                }
+            }
+            parts.add(new Part(materials, weights, trees));
         }
         if (parts.isEmpty()) {
             throw new IllegalArgumentException("name at least one block");

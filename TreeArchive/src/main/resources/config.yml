@@ -98,8 +98,10 @@ preview:
   # How far around you markers are looked for, and how much of the height.
   radius: 150
   # The most trees one preview shows. More markers than this and there is no preview:
-  # a guard against marking with a block that is everywhere, like stone.
-  max-trees: 100
+  # a guard against marking with a block that is everywhere, like stone. With
+  # --continuous the preview stops growing at this many instead, and until then grows
+  # the markers of every chunk loaded later.
+  max-trees: 500
   min-y: -64
   max-y: 160
   # Time spent per tick while growing a preview.
