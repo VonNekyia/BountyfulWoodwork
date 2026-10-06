@@ -51,3 +51,23 @@ felling:
         per-block: 0.25
       - item: nexo:hardwood
         per-block: 0.001
+
+# Leaf colours for players with the ColorfulLeaves client mod, by tree type, or by the
+# id of an archived tree, which goes first. Everyone else, and types without an entry,
+# see the usual leaves - as does everyone for azalea, cherry, pale oak and poplar
+# leaves, whose colour is in their texture. A type gets
+#   one colour:             larch: "#d9a42b"
+#   one of several:         maple: ["#b5361d", "#cc4f1f"]   - each tree keeps its own
+#   a fade over the crown:  fade: [first, ..., last]        - two colours or more
+#                           direction: up   - from the bottom of the crown to the top
+#                           direction: out  - from the middle of the crown to its edge
+# Leaf textures are a mid grey, and a colour only darkens them - white comes out grey.
+# bright: true draws the leaves on a lighter copy of their texture instead, for whites,
+# pastels and anything that should glow; it goes with a fade, or with one colour or
+# several written as colour: "#ffffff" or colours: [...].
+leaf-colors:
+  maple: ["#b5361d", "#cc4f1f", "#e07b24"]
+  larch: "#d9a42b"
+  beech:
+    fade: ["#6b3a14", "#c8742a", "#f0b347"]
+    direction: up

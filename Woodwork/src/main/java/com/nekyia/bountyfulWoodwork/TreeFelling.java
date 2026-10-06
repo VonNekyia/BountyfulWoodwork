@@ -284,7 +284,8 @@ final class TreeFelling implements Listener {
 
     /** Drops each configured item, per-block times the trunk blocks, rounding at random. */
     private void dropItems(String type, int trunkBlocks, Location location) {
-        List<Drop> list = drops.getOrDefault(type, drops.getOrDefault("default", List.of()));
+        List<Drop> list = drops.getOrDefault(type, drops.getOrDefault(TreeRegistry.kind(type),
+                drops.getOrDefault("default", List.of())));
         for (Drop drop : list) {
             double exact = trunkBlocks * drop.perBlock();
             int amount = (int) exact + (ThreadLocalRandom.current().nextDouble() < exact % 1 ? 1 : 0);

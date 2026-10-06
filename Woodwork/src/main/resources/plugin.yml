@@ -10,7 +10,7 @@ authors: [ gerryxn ]
 
 commands:
   bw:
-    description: Reloads the felling settings.
+    description: Reloads the felling settings and leaf colours.
     usage: /bw reload
     aliases: [ woodwork ]
     permission: bountyfulwoodwork.admin

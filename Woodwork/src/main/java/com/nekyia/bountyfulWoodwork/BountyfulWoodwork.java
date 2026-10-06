@@ -26,10 +26,15 @@ public final class BountyfulWoodwork extends JavaPlugin {
         registry.indexLoadedChunks();
         felling = new TreeFelling(this, registry);
         felling.reload();
+        LeafColors leafColors = new LeafColors(this, registry);
+        getServer().getMessenger().registerOutgoingPluginChannel(this, LeafColors.CHANNEL);
+        registry.onChange(leafColors::changed);
+        leafColors.reload();
 
         PluginManager plugins = getServer().getPluginManager();
         plugins.registerEvents(registry, this);
         plugins.registerEvents(felling, this);
+        plugins.registerEvents(leafColors, this);
 
         // /bw reload - rereads config.yml.
         Objects.requireNonNull(getCommand("bw")).setExecutor((sender, command, label, args) -> {
@@ -38,7 +43,8 @@ public final class BountyfulWoodwork extends JavaPlugin {
             }
             reloadConfig();
             felling.reload();
-            sender.sendMessage(Component.text("Reloaded the felling settings.", NamedTextColor.GREEN));
+            leafColors.reload();
+            sender.sendMessage(Component.text("Reloaded the felling settings and leaf colours.", NamedTextColor.GREEN));
             return true;
         });
     }

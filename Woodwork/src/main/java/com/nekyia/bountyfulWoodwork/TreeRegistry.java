@@ -4,9 +4,14 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.Material;
@@ -36,16 +41,34 @@ final class TreeRegistry implements Listener {
     record TreePart(UUID id, String type, int size, long[] chunks, Map<Long, Material> blocks) {
     }
 
+    /** The keys trees are stored under, all in one namespace. */
+    private record Keys(NamespacedKey trees, NamespacedKey id, NamespacedKey type, NamespacedKey size,
+                        NamespacedKey chunks, NamespacedKey palette, NamespacedKey blocks) {
+
+        static Keys in(String namespace) {
+            return new Keys(key(namespace, "trees"), key(namespace, "id"), key(namespace, "type"),
+                    key(namespace, "size"), key(namespace, "chunks"), key(namespace, "palette"),
+                    key(namespace, "blocks"));
+        }
+
+        private static NamespacedKey key(String namespace, String key) {
+            return Objects.requireNonNull(NamespacedKey.fromString(namespace + ":" + key));
+        }
+    }
+
+    /** Where trees were stored while the plugin was still called BountyfulWookwork. */
+    private static final Keys LEGACY = Keys.in("bountyfulwookwork");
+
     /** Shifts block heights into the unsigned 12 bits they are packed into. */
     private static final int Y_OFFSET = 2048;
 
-    private final NamespacedKey treesKey;
-    private final NamespacedKey idKey;
-    private final NamespacedKey typeKey;
-    private final NamespacedKey sizeKey;
-    private final NamespacedKey chunksKey;
-    private final NamespacedKey paletteKey;
-    private final NamespacedKey blocksKey;
+    /** The id of an archived tree, like white_pine_large_snifferish_2: type, size, creator, number. */
+    private static final Pattern ARCHIVE_ID =
+            Pattern.compile("(.+?)_(?:shrub|little|medium|large|giant|fantasy)_.+_\\d+");
+
+    private final Keys keys;
+    private Consumer<Chunk> onChange = chunk -> {
+    };
 
     /** World -> chunk key -> the tree parts stored in that chunk. */
     private final Map<UUID, Map<Long, List<TreePart>>> partsByChunk = new HashMap<>();
@@ -53,13 +76,21 @@ final class TreeRegistry implements Listener {
     private final Map<UUID, Map<Long, TreePart>> partsByBlock = new HashMap<>();
 
     TreeRegistry(JavaPlugin plugin) {
-        treesKey = new NamespacedKey(plugin, "trees");
-        idKey = new NamespacedKey(plugin, "id");
-        typeKey = new NamespacedKey(plugin, "type");
-        sizeKey = new NamespacedKey(plugin, "size");
-        chunksKey = new NamespacedKey(plugin, "chunks");
-        paletteKey = new NamespacedKey(plugin, "palette");
-        blocksKey = new NamespacedKey(plugin, "blocks");
+        keys = Keys.in(plugin.getName().toLowerCase(Locale.ROOT));
+    }
+
+    /** Told whenever the trees stored in a chunk changed. */
+    void onChange(Consumer<Chunk> listener) {
+        onChange = listener;
+    }
+
+    /**
+     * The type of a tree as config.yml knows it. Trees placed from an archived blueprint
+     * may carry the blueprint's id, white_pine_large_snifferish_2; their type is white_pine.
+     */
+    static String kind(String type) {
+        Matcher matcher = ARCHIVE_ID.matcher(type);
+        return matcher.matches() ? matcher.group(1) : type;
     }
 
     /** Indexes the chunks that were loaded before the plugin enabled. */
@@ -168,16 +199,26 @@ final class TreeRegistry implements Listener {
         long chunkKey = chunk.getChunkKey();
         unindex(world, chunkKey);
 
-        List<PersistentDataContainer> stored = chunk.getPersistentDataContainer()
-                .get(treesKey, PersistentDataType.LIST.dataContainers());
+        PersistentDataContainer data = chunk.getPersistentDataContainer();
+        Keys from = keys;
+        List<PersistentDataContainer> stored = data.get(keys.trees(), PersistentDataType.LIST.dataContainers());
+        if (stored == null) {
+            // Trees from before the rename are moved over on the way.
+            from = LEGACY;
+            stored = data.get(LEGACY.trees(), PersistentDataType.LIST.dataContainers());
+        }
         if (stored == null) {
             return;
         }
         for (PersistentDataContainer container : stored) {
-            TreePart part = decode(chunk, container);
+            TreePart part = decode(chunk, container, from);
             if (part != null) {
                 add(world, chunkKey, part);
             }
+        }
+        if (from == LEGACY) {
+            save(chunk);
+            data.remove(LEGACY.trees());
         }
     }
 
@@ -209,7 +250,21 @@ final class TreeRegistry implements Listener {
         }
     }
 
-    private List<TreePart> partsIn(World world, long chunkKey) {
+    /** The parts of a tree in the chunks that are loaded, loading none. */
+    List<TreePart> loadedPartsOf(World world, TreePart tree) {
+        List<TreePart> parts = new ArrayList<>();
+        for (long chunkKey : tree.chunks()) {
+            for (TreePart part : partsIn(world, chunkKey)) {
+                if (part.id().equals(tree.id())) {
+                    parts.add(part);
+                }
+            }
+        }
+        return parts;
+    }
+
+    /** The tree parts stored in a loaded chunk, by Paper's chunk key. */
+    List<TreePart> partsIn(World world, long chunkKey) {
         Map<Long, List<TreePart>> chunks = partsByChunk.get(world.getUID());
         return chunks == null ? List.of() : chunks.getOrDefault(chunkKey, List.of());
     }
@@ -226,13 +281,14 @@ final class TreeRegistry implements Listener {
             if (chunks != null) {
                 chunks.remove(chunk.getChunkKey());
             }
-            data.remove(treesKey);
-            return;
+            data.remove(keys.trees());
+        } else {
+            List<PersistentDataContainer> encoded = parts.stream()
+                    .map(part -> encode(data.getAdapterContext(), part))
+                    .toList();
+            data.set(keys.trees(), PersistentDataType.LIST.dataContainers(), encoded);
         }
-        List<PersistentDataContainer> encoded = parts.stream()
-                .map(part -> encode(data.getAdapterContext(), part))
-                .toList();
-        data.set(treesKey, PersistentDataType.LIST.dataContainers(), encoded);
+        onChange.accept(chunk);
     }
 
     /**
@@ -257,22 +313,22 @@ final class TreeRegistry implements Listener {
         }
 
         PersistentDataContainer container = context.newPersistentDataContainer();
-        container.set(idKey, PersistentDataType.STRING, part.id().toString());
-        container.set(typeKey, PersistentDataType.STRING, part.type());
-        container.set(sizeKey, PersistentDataType.INTEGER, part.size());
-        container.set(chunksKey, PersistentDataType.LONG_ARRAY, part.chunks());
-        container.set(paletteKey, PersistentDataType.LIST.strings(), palette);
-        container.set(blocksKey, PersistentDataType.INTEGER_ARRAY, packed);
+        container.set(keys.id(), PersistentDataType.STRING, part.id().toString());
+        container.set(keys.type(), PersistentDataType.STRING, part.type());
+        container.set(keys.size(), PersistentDataType.INTEGER, part.size());
+        container.set(keys.chunks(), PersistentDataType.LONG_ARRAY, part.chunks());
+        container.set(keys.palette(), PersistentDataType.LIST.strings(), palette);
+        container.set(keys.blocks(), PersistentDataType.INTEGER_ARRAY, packed);
         return container;
     }
 
-    private @Nullable TreePart decode(Chunk chunk, PersistentDataContainer container) {
-        String id = container.get(idKey, PersistentDataType.STRING);
-        String type = container.get(typeKey, PersistentDataType.STRING);
-        Integer size = container.get(sizeKey, PersistentDataType.INTEGER);
-        long[] chunks = container.get(chunksKey, PersistentDataType.LONG_ARRAY);
-        List<String> paletteNames = container.get(paletteKey, PersistentDataType.LIST.strings());
-        int[] packed = container.get(blocksKey, PersistentDataType.INTEGER_ARRAY);
+    private static @Nullable TreePart decode(Chunk chunk, PersistentDataContainer container, Keys keys) {
+        String id = container.get(keys.id(), PersistentDataType.STRING);
+        String type = container.get(keys.type(), PersistentDataType.STRING);
+        Integer size = container.get(keys.size(), PersistentDataType.INTEGER);
+        long[] chunks = container.get(keys.chunks(), PersistentDataType.LONG_ARRAY);
+        List<String> paletteNames = container.get(keys.palette(), PersistentDataType.LIST.strings());
+        int[] packed = container.get(keys.blocks(), PersistentDataType.INTEGER_ARRAY);
         if (id == null || type == null || size == null || chunks == null || paletteNames == null || packed == null) {
             return null;
         }
