@@ -19,7 +19,3 @@ hs_err_pid*
 
 # Common working directory
 run
-
-# Logs of game test runs
-logs
-*.log
