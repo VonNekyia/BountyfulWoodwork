@@ -40,7 +40,8 @@ import org.jspecify.annotations.Nullable;
  * /ta debug generation trees|off - replaces the trees of new chunks with archived ones.
  * /ta type [name] - lists the tree types, or makes one.
  * /ta trunkpos - marks the block a tree stands on; //trunkpos does the same.
- * /ta archive type creator [--size category] [--overwrite tree] - puts a tree into the archive.
+ * /ta archive type creator [--size category] [--overwrite tree] - puts a tree into the archive;
+ *     /ta archive --overwrite tree alone keeps that tree's type, creator and size.
  * /ta list [words] - names the archived trees, narrowed down by type, size or creator.
  * /ta duplicates - finds trees archived twice, turned or mirrored.
  * /ta resort tree size - files an archived tree under another size, renaming it.
@@ -257,7 +258,11 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
         }
     }
 
-    /** /ta archive type creator [--size category] [--overwrite tree] - puts a tree into the archive. */
+    /**
+     * /ta archive type creator [--size category] [--overwrite tree] - puts a tree into the
+     * archive. With --overwrite, what is left out - type, creator, size - stays as the
+     * overwritten tree had it, so /ta archive --overwrite tree alone keeps its name.
+     */
     private void archive(CommandSender sender, String[] rawArgs) {
         if (!(sender instanceof Player player)) {
             sender.sendMessage(Component.text("Only players can archive a tree.", NamedTextColor.RED));
@@ -265,10 +270,9 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
         }
         Parsed parsed = Parsed.of(rawArgs);
         String[] args = parsed.words();
-        if (args.length < 3) {
-            player.sendMessage(Component.text(
-                    "Usage: /ta archive <type> <creator> [--size <category>] [--overwrite <tree>]",
-                    NamedTextColor.RED));
+        if (args.length < 3 && (parsed.overwrite() == null || args.length == 2)) {
+            player.sendMessage(Component.text("Usage: /ta archive <type> <creator> [--size <category>]"
+                    + " [--overwrite <tree>] | --overwrite <tree>", NamedTextColor.RED));
             return;
         }
 
@@ -283,7 +287,8 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
             }
         }
 
-        // --size files the tree under a category its measurements would not put it in.
+        // --size files the tree under a category its measurements would not put it in;
+        // overwriting keeps the one the tree had.
         TreeArchive.Category size = null;
         if (parsed.size() != null) {
             size = archive.category(parsed.size());
@@ -293,9 +298,11 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
                                 .collect(Collectors.joining(", ")), NamedTextColor.RED));
                 return;
             }
+        } else if (replacing != null) {
+            size = archive.category(replacing.category());
         }
 
-        String type = args[1].toLowerCase(Locale.ROOT);
+        String type = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : Objects.requireNonNull(replacing).type();
         if (!archive.hasType(type)) {
             player.sendMessage(Component.text("Unknown tree type '" + type
                     + "'. Make it with /ta type <name>. Tree types: "
@@ -303,8 +310,9 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
             return;
         }
         // Everything after the type is the creator, so artist names may have spaces.
-        String creatorName = String.join(" ", Arrays.copyOfRange(args, 2, args.length));
-        TreeArchive.Creator creator = archive.creator(creatorName);
+        String creatorName = args.length > 2 ? String.join(" ", Arrays.copyOfRange(args, 2, args.length))
+                : Objects.requireNonNull(replacing).creator().name();
+        TreeArchive.Creator creator = args.length > 2 ? archive.creator(creatorName) : replacing.creator();
         if (creator == null) {
             player.sendMessage(Component.text("Unknown creator '" + creatorName
                     + "'. Players have to have been on the server; register an artist once with "
