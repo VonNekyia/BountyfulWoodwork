@@ -12,20 +12,31 @@ import com.sk89q.worldedit.regions.Region;
 import com.sk89q.worldedit.session.ClipboardHolder;
 import com.sk89q.worldedit.world.block.BlockState;
 import com.sk89q.worldedit.world.block.BlockTypes;
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.LongConsumer;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.Chunk;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.TextDisplay;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.world.ChunkLoadEvent;
+import org.bukkit.event.world.EntitiesLoadEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.BoundingBox;
@@ -37,12 +48,14 @@ import org.jspecify.annotations.Nullable;
  * by size, so every tree of a kind stands together and one row never mixes builders.
  * Each plot is floored with a checkerboard of three by three tiles in light gray and
  * cyan terracotta, with one red block in the middle where the trunk goes. Above each
- * tree floats its id, for every direction, so the layout tells which tree is which.
+ * tree floats its id, for every direction, so the layout tells which tree is which. The
+ * names are never saved with the world - it may go on to the main server - but kept by
+ * the plugin, in layout-labels.yml, and put up again whenever their chunk loads.
  *
  * <p>It takes a selection like {@code birch,oak} or {@code 70%birch,30%oak}. The work is
  * spread over ticks, so it does not stall the server.
  */
-final class TreeLayout {
+final class TreeLayout implements Listener {
 
     /** Blocks between two plots. */
     private static final int GAP = 1;
@@ -55,6 +68,14 @@ final class TreeLayout {
     private record Job(TreeArchive.Entry entry, int x, int z, int plotSize, int clearTo) {
     }
 
+    /** The name floating over a laid out tree. */
+    private record Label(double x, double y, double z, String id) {
+
+        long chunk() {
+            return Chunk.getChunkKey((int) Math.floor(x) >> 4, (int) Math.floor(z) >> 4);
+        }
+    }
+
 
 
     private final JavaPlugin plugin;
@@ -62,11 +83,75 @@ final class TreeLayout {
     private final TreePaster paster;
 
     private @Nullable BukkitTask task;
+    /** World name -> chunk key -> the names in that chunk. */
+    private final Map<String, Map<Long, List<Label>>> labels = new HashMap<>();
+    private boolean labelsChanged;
 
     TreeLayout(JavaPlugin plugin, TreeArchive archive, TreePaster paster) {
         this.plugin = plugin;
         this.archive = archive;
         this.paster = paster;
+        YamlConfiguration file = YamlConfiguration.loadConfiguration(labelFile());
+        for (String world : file.getKeys(false)) {
+            for (String line : file.getStringList(world)) {
+                String[] parts = line.split(" ");
+                if (parts.length == 4) {
+                    add(world, new Label(Double.parseDouble(parts[0]), Double.parseDouble(parts[1]),
+                            Double.parseDouble(parts[2]), parts[3]));
+                }
+            }
+        }
+        // After a plugin reload the old names may still stand in loaded chunks.
+        for (World world : plugin.getServer().getWorlds()) {
+            for (Chunk chunk : world.getLoadedChunks()) {
+                for (Entity entity : chunk.getEntities()) {
+                    if (entity.getScoreboardTags().contains(LABEL)) {
+                        entity.remove();
+                    }
+                }
+                show(chunk);
+            }
+        }
+    }
+
+    @EventHandler
+    public void onChunkLoad(ChunkLoadEvent event) {
+        show(event.getChunk());
+    }
+
+    /** Names a world saved before they were kept out of it go. */
+    @EventHandler
+    public void onEntitiesLoad(EntitiesLoadEvent event) {
+        event.getEntities().stream().filter(entity -> entity.getScoreboardTags().contains(LABEL))
+                .forEach(Entity::remove);
+    }
+
+    private void show(Chunk chunk) {
+        World world = chunk.getWorld();
+        for (Label label : labels.getOrDefault(world.getName(), Map.of()).getOrDefault(chunk.getChunkKey(), List.of())) {
+            spawn(world, label);
+        }
+    }
+
+    private void add(String world, Label label) {
+        labels.computeIfAbsent(world, ignored -> new HashMap<>())
+                .computeIfAbsent(label.chunk(), ignored -> new ArrayList<>()).add(label);
+    }
+
+    private File labelFile() {
+        return new File(plugin.getDataFolder(), "layout-labels.yml");
+    }
+
+    private void saveLabels() {
+        YamlConfiguration file = new YamlConfiguration();
+        labels.forEach((world, byChunk) -> file.set(world, byChunk.values().stream().flatMap(List::stream)
+                .map(label -> label.x() + " " + label.y() + " " + label.z() + " " + label.id()).toList()));
+        try {
+            file.save(labelFile());
+            labelsChanged = false;
+        } catch (IOException e) {
+            plugin.getLogger().warning("Could not save " + labelFile().getName() + ": " + e.getMessage());
+        }
     }
 
     boolean running() {
@@ -77,6 +162,9 @@ final class TreeLayout {
         if (task != null) {
             task.cancel();
             task = null;
+        }
+        if (labelsChanged) {
+            saveLabels();
         }
     }
 
@@ -204,17 +292,35 @@ final class TreeLayout {
     }
 
     /** Floats the tree's id over it, in place of a name an earlier layout left on the plot. */
-    private static void label(World world, Job job, int floorY) {
+    private void label(World world, Job job, int floorY) {
         int size = job.plotSize();
-        world.getNearbyEntities(new BoundingBox(job.x(), floorY, job.z(), job.x() + size, job.clearTo() + 1,
-                        job.z() + size), entity -> entity.getScoreboardTags().contains(LABEL))
-                .forEach(Entity::remove);
-        Location above = new Location(world, job.x() + size / 2 + 0.5, floorY + job.entry().height() + 2,
-                job.z() + size / 2 + 0.5);
-        world.spawn(above, TextDisplay.class, label -> {
-            label.text(Component.text(job.entry().id()));
-            label.setBillboard(Display.Billboard.CENTER);
-            label.addScoreboardTag(LABEL);
+        BoundingBox plot = new BoundingBox(job.x(), floorY, job.z(), job.x() + size, job.clearTo() + 1,
+                job.z() + size);
+        world.getNearbyEntities(plot, entity -> entity.getScoreboardTags().contains(LABEL)).forEach(Entity::remove);
+        Map<Long, List<Label>> inWorld = labels.getOrDefault(world.getName(), Map.of());
+        for (int chunkX = job.x() >> 4; chunkX <= (job.x() + size) >> 4; chunkX++) {
+            for (int chunkZ = job.z() >> 4; chunkZ <= (job.z() + size) >> 4; chunkZ++) {
+                List<Label> inChunk = inWorld.get(Chunk.getChunkKey(chunkX, chunkZ));
+                if (inChunk != null) {
+                    inChunk.removeIf(label -> plot.contains(label.x(), label.y(), label.z()));
+                }
+            }
+        }
+        Label label = new Label(job.x() + size / 2 + 0.5, floorY + job.entry().height() + 2,
+                job.z() + size / 2 + 0.5, job.entry().id());
+        add(world.getName(), label);
+        labelsChanged = true;
+        // Shown right away: the chunk is loaded, its load already past.
+        spawn(world, label);
+    }
+
+    /** Puts a name up, for as long as its chunk stays loaded: the world never saves it. */
+    private static void spawn(World world, Label label) {
+        world.spawn(new Location(world, label.x(), label.y(), label.z()), TextDisplay.class, display -> {
+            display.text(Component.text(label.id()));
+            display.setBillboard(Display.Billboard.CENTER);
+            display.addScoreboardTag(LABEL);
+            display.setPersistent(false);
         });
     }
 

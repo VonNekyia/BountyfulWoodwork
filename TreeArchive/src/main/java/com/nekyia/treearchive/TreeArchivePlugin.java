@@ -36,8 +36,10 @@ public final class TreeArchivePlugin extends JavaPlugin {
         TrunkPosCommand trunkPos = new TrunkPosCommand();
         Objects.requireNonNull(getCommand("/trunkpos")).setExecutor(trunkPos);
 
+        TreeLayout layout = new TreeLayout(this, archive, paster);
+        plugins.registerEvents(layout, this);
         ArchiveCommand command = new ArchiveCommand(new PreviewLibrary(this), brush, debug, archive,
-                new TreeLayout(this, archive, paster), new TreeForest(this, archive, paster),
+                layout, new TreeForest(this, archive, paster),
                 new TreeDuplicates(this, archive), preview, trunkPos);
         PluginCommand ta = Objects.requireNonNull(getCommand("ta"));
         ta.setExecutor(command);
