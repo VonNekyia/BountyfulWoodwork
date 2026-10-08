@@ -296,7 +296,8 @@ final class TreeArchive {
         for (BlockVector3 position : clipboard.getRegion()) {
             BaseBlock block = clipboard.getFullBlock(position);
             if (Tag.LEAVES.isTagged(BukkitAdapter.adapt(block.getBlockType()))
-                    && BukkitAdapter.adapt(block) instanceof Leaves leaves && !leaves.isPersistent()) {
+                    // A copy: FastAsyncWorldEdit hands out the same BlockData for every block of a state.
+                    && BukkitAdapter.adapt(block).clone() instanceof Leaves leaves && !leaves.isPersistent()) {
                 leaves.setPersistent(true);
                 clipboard.setBlock(position, BukkitAdapter.adapt(leaves).toBaseBlock());
                 persisted++;
