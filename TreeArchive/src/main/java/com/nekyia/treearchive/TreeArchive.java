@@ -14,6 +14,7 @@ import com.sk89q.worldedit.function.operation.Operations;
 import com.sk89q.worldedit.math.BlockVector3;
 import com.sk89q.worldedit.regions.CuboidRegion;
 import com.sk89q.worldedit.regions.Region;
+import com.sk89q.worldedit.world.block.BaseBlock;
 import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
@@ -31,7 +32,11 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.Tag;
+import org.bukkit.block.data.type.Leaves;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -219,7 +224,92 @@ final class TreeArchive {
             }
         }
         entries = List.copyOf(found);
+        checkLeaves();
         return entries.size();
+    }
+
+    /**
+     * Goes once over every blueprint not looked at yet - archived before this check, or
+     * put into the folder by hand - and makes its leaves that could decay persistent,
+     * saying so in the log.
+     */
+    private void checkLeaves() {
+        Set<String> checked = new TreeSet<>(YamlConfiguration.loadConfiguration(checkedFile()).getStringList("checked"));
+        int before = checked.size();
+        int trees = 0;
+        int leaves = 0;
+        for (Entry entry : entries) {
+            if (checked.contains(entry.id())) {
+                continue;
+            }
+            Clipboard clipboard = load(entry);
+            if (clipboard == null) {
+                continue;
+            }
+            try {
+                int persisted = persistLeaves(clipboard);
+                if (persisted > 0) {
+                    write(clipboard, entry.schematic());
+                    plugin.getLogger().info(entry.id() + ": " + persisted
+                            + " leaves would have decayed; they are persistent now.");
+                    trees++;
+                    leaves += persisted;
+                }
+                checked.add(entry.id());
+            } catch (WorldEditException | IOException e) {
+                plugin.getLogger().warning("Could not check the leaves of " + entry.id() + ": " + e.getMessage());
+            } finally {
+                release(clipboard);
+            }
+        }
+        if (trees > 0) {
+            plugin.getLogger().info("Made " + leaves + " leaves in " + trees + " archived trees persistent.");
+        }
+        if (checked.size() != before) {
+            saveChecked(checked);
+        }
+    }
+
+    /** The trees whose leaves were checked, so each is looked at once - kept outside the archive folder. */
+    private File checkedFile() {
+        return new File(plugin.getDataFolder(), "persistent-leaves.yml");
+    }
+
+    private void saveChecked(Set<String> checked) {
+        YamlConfiguration file = new YamlConfiguration();
+        file.set("checked", List.copyOf(checked));
+        try {
+            file.save(checkedFile());
+        } catch (IOException e) {
+            plugin.getLogger().warning("Could not save " + checkedFile().getName() + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * Makes every leaf of a blueprint that could decay persistent: pasted, leaves too far
+     * from a log would fall off the tree otherwise.
+     *
+     * @return how many there were
+     */
+    static int persistLeaves(Clipboard clipboard) throws WorldEditException {
+        int persisted = 0;
+        for (BlockVector3 position : clipboard.getRegion()) {
+            BaseBlock block = clipboard.getFullBlock(position);
+            if (Tag.LEAVES.isTagged(BukkitAdapter.adapt(block.getBlockType()))
+                    && BukkitAdapter.adapt(block) instanceof Leaves leaves && !leaves.isPersistent()) {
+                leaves.setPersistent(true);
+                clipboard.setBlock(position, BukkitAdapter.adapt(leaves).toBaseBlock());
+                persisted++;
+            }
+        }
+        return persisted;
+    }
+
+    private static void write(Clipboard clipboard, File schematic) throws IOException {
+        try (ClipboardWriter writer = BuiltInClipboardFormat.SPONGE_V3_SCHEMATIC
+                .getWriter(new FileOutputStream(schematic))) {
+            writer.write(clipboard);
+        }
     }
 
     List<Entry> entries() {
@@ -357,12 +447,14 @@ final class TreeArchive {
             copy.setCopyingEntities(false);
             Operations.complete(copy);
             clipboard.setOrigin(trunk);
+            int persisted = persistLeaves(clipboard);
+            if (persisted > 0) {
+                player.sendMessage(Component.text(persisted + " leaves of the tree would have decayed;"
+                        + " in the blueprint they are persistent.", NamedTextColor.YELLOW));
+            }
 
             File schematic = new File(folder(), id + ".schem");
-            try (ClipboardWriter writer = BuiltInClipboardFormat.SPONGE_V3_SCHEMATIC
-                    .getWriter(new FileOutputStream(schematic))) {
-                writer.write(clipboard);
-            }
+            write(clipboard, schematic);
 
             YamlConfiguration meta = new YamlConfiguration();
             meta.set("id", id);
@@ -397,6 +489,10 @@ final class TreeArchive {
             }
             updated.add(entry);
             entries = List.copyOf(updated);
+            Set<String> checked = new TreeSet<>(YamlConfiguration.loadConfiguration(checkedFile()).getStringList("checked"));
+            if (checked.add(id)) {
+                saveChecked(checked);
+            }
             return entry;
         } finally {
             release(clipboard);
