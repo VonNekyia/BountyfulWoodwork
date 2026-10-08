@@ -41,11 +41,11 @@ import org.jspecify.annotations.Nullable;
  * /ta type [name] - lists the tree types, or makes one.
  * /ta trunkpos - marks the block a tree stands on; //trunkpos does the same.
  * /ta archive type creator [--size category] [--overwrite tree] - puts a tree into the archive;
- *     /ta archive --overwrite tree alone keeps that tree's type, creator and size.
+ *     /ta archive --overwrite tree alone keeps that tree's type, creator and size, and
+ *     without a trunk mark it only files the tree anew: /ta archive --overwrite tree --size
+ *     large, or /ta archive oak snifferish --overwrite tree.
  * /ta list [words] - names the archived trees, narrowed down by type, size or creator.
  * /ta duplicates - finds trees archived twice, turned or mirrored.
- * /ta resort tree size - files an archived tree under another size, renaming it.
- * /ta recreator tree creator - puts an archived tree under someone else's name.
  * /ta patreon name link - remembers an artist who is not a player here.
  * /ta layout categorized [trees] - lays the archive out on the tree map.
  * /ta preview blocks:trees/... | player name | clear - shows a forest to you alone.
@@ -122,14 +122,6 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
         }
         if (args.length >= 1 && args[0].equalsIgnoreCase("archive")) {
             archive(sender, args);
-            return true;
-        }
-        if (args.length >= 1 && args[0].equalsIgnoreCase("recreator")) {
-            recreator(sender, args);
-            return true;
-        }
-        if (args.length >= 1 && args[0].equalsIgnoreCase("resort")) {
-            resort(sender, args);
             return true;
         }
         if (args.length == 1 && args[0].equalsIgnoreCase("duplicates")) {
@@ -261,7 +253,8 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
     /**
      * /ta archive type creator [--size category] [--overwrite tree] - puts a tree into the
      * archive. With --overwrite, what is left out - type, creator, size - stays as the
-     * overwritten tree had it, so /ta archive --overwrite tree alone keeps its name.
+     * overwritten tree had it, so /ta archive --overwrite tree alone keeps its name. Without
+     * a trunk mark there is no new blueprint, and the tree is only filed anew.
      */
     private void archive(CommandSender sender, String[] rawArgs) {
         if (!(sender instanceof Player player)) {
@@ -320,6 +313,10 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
             return;
         }
         BlockVector3 trunk = trunkPos.mark(player);
+        if (trunk == null && replacing != null) {
+            refile(player, replacing, type, size != null ? size : archive.categoryOf(replacing), creator);
+            return;
+        }
         if (trunk == null) {
             player.sendMessage(Component.text("Mark the block the tree stands on with //trunkpos first.",
                     NamedTextColor.RED));
@@ -368,79 +365,28 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
         }
     }
 
-    /** /ta resort tree size - files an archived tree under another size. */
-    private void resort(CommandSender sender, String[] args) {
-        if (args.length != 3) {
-            sender.sendMessage(Component.text("Usage: /ta resort <tree> <size>", NamedTextColor.RED));
+    /** Files an archived tree under another type, size or creator, keeping its blueprint. */
+    private void refile(Player player, TreeArchive.Entry entry, String type, TreeArchive.Category category,
+                        TreeArchive.Creator creator) {
+        if (entry.type().equals(type) && entry.category().equals(category.name())
+                && entry.creator().equals(creator)) {
+            player.sendMessage(Component.text("Nothing to change on " + entry.id() + ". For a new blueprint,"
+                    + " mark the trunk with //trunkpos and select the tree first.", NamedTextColor.YELLOW));
             return;
         }
-        TreeArchive.Entry entry = archive.entry(args[1]);
-        if (entry == null) {
-            sender.sendMessage(Component.text("No archived tree called '" + args[1]
-                    + "'. /ta list shows them.", NamedTextColor.RED));
-            return;
-        }
-        TreeArchive.Category category = archive.category(args[2]);
-        if (category == null) {
-            sender.sendMessage(Component.text("Unknown size '" + args[2] + "'. Sizes: "
-                    + archive.categories().stream().map(TreeArchive.Category::name)
-                            .collect(Collectors.joining(", ")), NamedTextColor.RED));
-            return;
-        }
-        if (entry.category().equals(category.name())) {
-            sender.sendMessage(Component.text(entry.id() + " is already filed as "
-                    + category.name() + ".", NamedTextColor.YELLOW));
-            return;
-        }
-
         try {
-            TreeArchive.Entry moved = archive.refile(entry, entry.type(), category, entry.creator());
-            sender.sendMessage(Component.text("Refiled " + entry.id() + " as " + moved.id()
-                    + ", on a " + category.plotSize() + " block plot. Run /ta layout again to"
-                    + " move it on the tree map.", NamedTextColor.GREEN));
+            TreeArchive.Entry moved = archive.refile(entry, type, category, creator);
+            player.sendMessage(Component.text("Refiled " + entry.id() + " as " + moved.id() + ", a " + type
+                    + " by " + creator.name() + (creator.patreon() ? " (patreon)" : "") + " on a "
+                    + category.plotSize() + " block plot; the blueprint stays. Run /ta layout again to move"
+                    + " it on the tree map.", NamedTextColor.GREEN));
             int side = Math.max(moved.width(), moved.length());
             if (side > category.plotSize()) {
-                sender.sendMessage(Component.text("It is " + side + " blocks wide, wider than that"
+                player.sendMessage(Component.text("It is " + side + " blocks wide, wider than that"
                         + " plot; it will reach into its neighbours.", NamedTextColor.YELLOW));
             }
         } catch (IOException e) {
-            sender.sendMessage(Component.text("Could not refile it: " + e.getMessage(),
-                    NamedTextColor.RED));
-        }
-    }
-
-    /** /ta recreator tree creator - puts an archived tree under someone else's name. */
-    private void recreator(CommandSender sender, String[] args) {
-        if (args.length < 3) {
-            sender.sendMessage(Component.text("Usage: /ta recreator <tree> <creator>",
-                    NamedTextColor.RED));
-            return;
-        }
-        TreeArchive.Entry entry = archive.entry(args[1]);
-        if (entry == null) {
-            sender.sendMessage(Component.text("No archived tree called '" + args[1]
-                    + "'. /ta list shows them.", NamedTextColor.RED));
-            return;
-        }
-        // Everything after the tree is the creator, so artist names may have spaces.
-        String name = String.join(" ", Arrays.copyOfRange(args, 2, args.length));
-        TreeArchive.Creator creator = archive.creator(name);
-        if (creator == null) {
-            sender.sendMessage(Component.text("Unknown creator '" + name
-                    + "'. Players have to have been on the server; register an artist once with "
-                    + "/ta patreon <name> <link>.", NamedTextColor.RED));
-            return;
-        }
-
-        try {
-            TreeArchive.Entry moved = archive.refile(entry, entry.type(),
-                    archive.categoryOf(entry), creator);
-            sender.sendMessage(Component.text("Refiled " + entry.id() + " as " + moved.id()
-                    + ", now by " + creator.name() + (creator.patreon() ? " (patreon)" : "") + ".",
-                    NamedTextColor.GREEN));
-        } catch (IOException e) {
-            sender.sendMessage(Component.text("Could not refile it: " + e.getMessage(),
-                    NamedTextColor.RED));
+            player.sendMessage(Component.text("Could not refile it: " + e.getMessage(), NamedTextColor.RED));
         }
     }
 
@@ -1142,7 +1088,7 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
         }
         Stream<String> options = switch (args.length) {
             case 1 -> Stream.of("reload", "brush", "debug", "type", "trunkpos", "archive", "list",
-                    "duplicates", "resort", "recreator", "patreon", "layout", "preview", "forest", "decode");
+                    "duplicates", "patreon", "layout", "preview", "forest", "decode");
             case 2 -> switch (args[0].toLowerCase(Locale.ROOT)) {
                 case "brush" -> Stream.concat(BRUSH_CATEGORIES.stream(), Stream.of("clear"));
                 case "archive" -> archive.types().stream();
@@ -1153,7 +1099,6 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
                 case "forest" -> Stream.concat(forest.presets().stream(), Stream.of("save", "stop"));
                 case "debug" -> Stream.of("generation");
                 case "list" -> filters();
-                case "resort", "recreator" -> archive.entries().stream().map(TreeArchive.Entry::id);
                 default -> Stream.empty();
             };
             case 3 -> {
@@ -1165,12 +1110,6 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
                 }
                 if (args[0].equalsIgnoreCase("list")) {
                     yield filters();
-                }
-                if (args[0].equalsIgnoreCase("resort")) {
-                    yield archive.categories().stream().map(TreeArchive.Category::name);
-                }
-                if (args[0].equalsIgnoreCase("recreator")) {
-                    yield creators(sender);
                 }
                 if (args[0].equalsIgnoreCase("layout")) {
                     yield filters();
