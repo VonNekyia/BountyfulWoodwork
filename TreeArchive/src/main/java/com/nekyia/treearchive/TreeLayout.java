@@ -19,11 +19,16 @@ import java.util.List;
 import java.util.function.LongConsumer;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.entity.Display;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.TextDisplay;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.util.BoundingBox;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -31,7 +36,8 @@ import org.jspecify.annotations.Nullable;
  * by type, then by creator, then
  * by size, so every tree of a kind stands together and one row never mixes builders.
  * Each plot is floored with a checkerboard of three by three tiles in light gray and
- * cyan terracotta, with one red block in the middle where the trunk goes.
+ * cyan terracotta, with one red block in the middle where the trunk goes. Above each
+ * tree floats its id, for every direction, so the layout tells which tree is which.
  *
  * <p>It takes a selection like {@code birch,oak} or {@code 70%birch,30%oak}. The work is
  * spread over ticks, so it does not stall the server.
@@ -42,6 +48,8 @@ final class TreeLayout {
     private static final int GAP = 1;
     /** Air above a plot, over the tree standing on it. */
     private static final int HEADROOM = 8;
+    /** Marks the names floating over the trees, so laying out again replaces them. */
+    private static final String LABEL = "treearchive_layout_label";
 
     /** One tree to put on one plot. */
     private record Job(TreeArchive.Entry entry, int x, int z, int plotSize, int clearTo) {
@@ -187,11 +195,27 @@ final class TreeLayout {
                     .to(BlockVector3.at(job.x() + middle, floorY + 1, job.z() + middle))
                     .ignoreAirBlocks(true)
                     .build());
-            return true;
         } catch (WorldEditException e) {
             plugin.getLogger().warning("Could not place " + job.entry().id() + ": " + e.getMessage());
             return false;
         }
+        label(world, job, floorY);
+        return true;
+    }
+
+    /** Floats the tree's id over it, in place of a name an earlier layout left on the plot. */
+    private static void label(World world, Job job, int floorY) {
+        int size = job.plotSize();
+        world.getNearbyEntities(new BoundingBox(job.x(), floorY, job.z(), job.x() + size, job.clearTo() + 1,
+                        job.z() + size), entity -> entity.getScoreboardTags().contains(LABEL))
+                .forEach(Entity::remove);
+        Location above = new Location(world, job.x() + size / 2 + 0.5, floorY + job.entry().height() + 2,
+                job.z() + size / 2 + 0.5);
+        world.spawn(above, TextDisplay.class, label -> {
+            label.text(Component.text(job.entry().id()));
+            label.setBillboard(Display.Billboard.CENTER);
+            label.addScoreboardTag(LABEL);
+        });
     }
 
     // ---- shared ---------------------------------------------------------------------
