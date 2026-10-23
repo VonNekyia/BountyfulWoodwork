@@ -34,9 +34,33 @@ record TreeSelection(List<Part> parts, Field field) {
      * What may stand behind an ampersand: bright puts the leaves on their lighter texture,
      * out runs a fade from the middle of the crown to its edge instead of upwards, mistle
      * hangs mistletoe in the crown - moss with a bush on top, as the birches have it - and
-     * drymistle dry mistletoe for fall trees, mangrove roots with dry grass.
+     * drymistle dry mistletoe for fall trees, mangrove roots with dry grass. Mistletoe takes
+     * a strength, the share of the leaves it stands in for: mistle=30.
      */
     static final Set<String> MODIFIERS = Set.of("bright", "out", "mistle", "drymistle");
+    /** The modifiers that take a strength, from 1 to 100. */
+    static final Set<String> WITH_STRENGTH = Set.of("mistle", "drymistle");
+
+    /** A modifier's name, without the strength behind it: mistle=30 is mistle. */
+    static String name(String modifier) {
+        int equals = modifier.indexOf('=');
+        return equals < 0 ? modifier : modifier.substring(0, equals);
+    }
+
+    /** The modifier of this name among these, as written - mistle or mistle=30 - or null. */
+    static @Nullable String find(Set<String> modifiers, String name) {
+        return modifiers.stream().filter(modifier -> name(modifier).equals(name)).findFirst().orElse(null);
+    }
+
+    /** The strength written behind a modifier, or the fallback when there is none to read. */
+    static int strength(String modifier, int fallback) {
+        int equals = modifier.indexOf('=');
+        try {
+            return equals < 0 ? fallback : Integer.parseInt(modifier.substring(equals + 1));
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
 
     /** What the words are compared with. */
     enum Field {
@@ -98,7 +122,7 @@ record TreeSelection(List<Part> parts, Field field) {
     }
 
     /** Colours like #f5d130>#c0392b, the # optional; null when one cannot be read. */
-    private static int @Nullable [] colours(String written) {
+    static int @Nullable [] colours(String written) {
         String[] hexes = written.split(">");
         int[] colours = new int[hexes.length];
         for (int i = 0; i < hexes.length; i++) {

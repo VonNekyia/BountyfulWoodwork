@@ -40,8 +40,8 @@ import org.jspecify.annotations.Nullable;
  */
 final class TreePaster {
 
-    /** About one leaf in six becomes mistletoe, as on the birches in the archive. */
-    private static final double MISTLE_SHARE = 0.18;
+    /** About one leaf in six becomes mistletoe, as on the birches in the archive - in percent. */
+    static final int MISTLE_STRENGTH = 18;
     /** And most of it, about three in five, has a bush on top. */
     private static final double MISTLE_BUSH_SHARE = 0.62;
 
@@ -227,8 +227,10 @@ final class TreePaster {
     List<Placement> mistle(List<Placement> placements, Set<String> modifiers, World world, RandomGenerator random,
                            boolean bypassTerrain) {
         for (Mistletoe kind : Mistletoe.values()) {
-            if (modifiers.contains(kind.modifier)) {
-                placements = mistle(placements, kind, world, random, bypassTerrain);
+            String modifier = TreeSelection.find(modifiers, kind.modifier);
+            if (modifier != null) {
+                placements = mistle(placements, kind, TreeSelection.strength(modifier, MISTLE_STRENGTH) / 100.0,
+                        world, random, bypassTerrain);
             }
         }
         return placements;
@@ -236,13 +238,13 @@ final class TreePaster {
 
     /**
      * Mistletoe the way the birches in the archive have it: a clump - moss, or mangrove
-     * roots when dry - in place of a leaf that lies open above, about one for every six
-     * leaves, most with a bush or dry grass on top: where there is room for one, or
+     * roots when dry - in place of a leaf that lies open above, {@code share} of the leaves
+     * as far as there are open ones, most with a bush or dry grass on top: where there is room for one, or
      * anywhere with {@code bypassTerrain}. Dry grass does not hold on bare roots, so in the
      * world a block update next to it can knock it off.
      */
-    private List<Placement> mistle(List<Placement> placements, Mistletoe kind, World world, RandomGenerator random,
-                                   boolean bypassTerrain) {
+    private List<Placement> mistle(List<Placement> placements, Mistletoe kind, double share, World world,
+                                   RandomGenerator random, boolean bypassTerrain) {
         Map<Long, Integer> taken = new HashMap<>();
         for (int i = 0; i < placements.size(); i++) {
             Placement placement = placements.get(i);
@@ -263,7 +265,7 @@ final class TreePaster {
         BaseBlock clump = BukkitAdapter.adapt(kind.clump.createBlockData()).toBaseBlock();
 
         List<Placement> result = new ArrayList<>(placements);
-        int wanted = (int) Math.min(open.size() / 2, Math.round(leaves * MISTLE_SHARE));
+        int wanted = (int) Math.min(open.size(), Math.round(leaves * share));
         for (int i : open.subList(0, wanted)) {
             Placement leaf = placements.get(i);
             result.set(i, new Placement(leaf.x(), leaf.y(), leaf.z(), clump));

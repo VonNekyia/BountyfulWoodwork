@@ -61,7 +61,13 @@ record PreviewSpec(List<Part> parts) {
                                 + "' is not a colour like #d98c2b");
                     }
                     for (String modifier : tree.modifiers()) {
-                        if (!TreeSelection.MODIFIERS.contains(modifier)) {
+                        String name = TreeSelection.name(modifier);
+                        if (!name.equals(modifier) && (!TreeSelection.WITH_STRENGTH.contains(name)
+                                || !modifier.substring(name.length() + 1).matches("[1-9][0-9]?|100"))) {
+                            throw new IllegalArgumentException("'&" + modifier + "' takes no strength; &mistle and"
+                                    + " &drymistle take one from 1 to 100, like &mistle=30");
+                        }
+                        if (!TreeSelection.MODIFIERS.contains(name)) {
                             throw new IllegalArgumentException("'&" + modifier + "' is not a modifier; there is "
                                     + String.join(", ", TreeSelection.MODIFIERS.stream().map(m -> "&" + m).toList()));
                         }
