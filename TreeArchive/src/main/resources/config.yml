@@ -130,3 +130,11 @@ forest:
   # tree type, or "any". Add a line per block to mix them inside one preset.
   markers:
     gold_block: any
+
+# Leaf colours of trees placed for real are kept in their chunks, for the main server and
+# the map. Secondary colours and blossoms need format 2 there: turn this on once the map
+# (heroic-map-renderer) reads format 2 on prod. Until then chunks keep format 1, and
+# placed trees keep their colour without secondary colour and blossoms. Previews show
+# them either way.
+leaf-colours:
+  keep-format-2: false

@@ -15,7 +15,8 @@ class PreviewMenuTest {
 
     @Test
     void keepsEverythingATreeCanHave() {
-        List<String> parts = List.of("gold_block:70%maple*#c0392b>#f5d130&bright&out&mistle=30,30%beech&drymistle",
+        List<String> parts = List.of("gold_block:70%maple*#c0392b>#f5d130&bright&out&second=#f5d130&blossom=#ffb7c5"
+                        + "&bloom=40&mistle=30,30%beech&drymistle",
                 "--limit 300", "--continuous", "--bypassterrain");
         assertEquals(parts, again(parts));
     }

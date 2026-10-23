@@ -34,7 +34,8 @@ import org.jspecify.annotations.Nullable;
  * /ta preview as a menu, in the game's own dialogs, so nobody needs a mod for it. A
  * preview is put together marker block by marker block, each with its trees - a type, a
  * size, a creator or a name - their shares, their leaf colours from the player's own
- * colours, bright or fading outwards, and mistletoe of a strength. It is shown right
+ * colours, bright or fading outwards, a secondary colour, blossoms and how many, and
+ * mistletoe of a strength. It is shown right
  * away, or kept as a preset: on the player's own shelf, or in a namespace everyone can
  * use and only those with treearchive.namespaces change. What the menu makes is written
  * the way /ta preview reads it, so presets, hashes and shared links work as before.
@@ -62,6 +63,11 @@ final class PreviewMenu {
         /** none, mistle or drymistle. */
         String mistle = NONE;
         int strength = TreePaster.MISTLE_STRENGTH;
+        /** A secondary colour some of the leaves take, and the blossoms' colour - PRESENT set - or 0. */
+        int secondary;
+        int blossom;
+        /** Leaves in blossom, in percent. */
+        int bloom = TreeSelection.BLOOM;
     }
 
     /** A marker block - or several, by shares - and the trees growing on it; none means any. */
@@ -366,6 +372,12 @@ final class PreviewMenu {
                 DialogInput.bool("bright", Component.text("Bright - on a lighter leaf texture")).initial(tree.bright).build(),
                 DialogInput.bool("out", Component.text("Fade from the middle outwards, not upwards"))
                         .initial(tree.out).build(),
+                DialogInput.singleOption("second", Component.text("Secondary colour, on some leaves of each block"),
+                        colourOptions(colours, tree.secondary)).width(WIDE).build(),
+                DialogInput.singleOption("blossom", Component.text("Blossoms"), colourOptions(colours, tree.blossom))
+                        .width(WIDE).build(),
+                DialogInput.numberRange("bloom", Component.text("Leaves in blossom, %"), 1, 100)
+                        .step(1f).initial((float) tree.bloom).width(WIDE).build(),
                 DialogInput.singleOption("mistle", Component.text("Mistletoe"), List.of(
                         SingleOptionDialogInput.OptionEntry.create(NONE, Component.text("None"), tree.mistle.equals(NONE)),
                         SingleOptionDialogInput.OptionEntry.create("mistle", Component.text("Moss with bushes"),
@@ -404,11 +416,16 @@ final class PreviewMenu {
                     }
                     tree.bright = Boolean.TRUE.equals(view.getBoolean("bright"));
                     tree.out = Boolean.TRUE.equals(view.getBoolean("out"));
+                    tree.secondary = chosenColour(view.getText("second"), colours, tree.secondary);
+                    tree.blossom = chosenColour(view.getText("blossom"), colours, tree.blossom);
+                    tree.bloom = Math.round(Objects.requireNonNullElse(view.getFloat("bloom"), (float) TreeSelection.BLOOM));
                     tree.mistle = Objects.requireNonNullElse(view.getText("mistle"), NONE);
                     tree.strength = Math.round(Objects.requireNonNullElse(view.getFloat("strength"),
                             (float) TreePaster.MISTLE_STRENGTH));
-                    marker(who, markerIndex, tree.colours == null && (tree.bright || tree.out)
-                            ? "Bright and the outward fade only go with a leaf colour." : null);
+                    marker(who, markerIndex, tree.colours == null
+                            && (tree.bright || tree.out || tree.secondary != 0 || tree.blossom != 0)
+                            ? "Bright, the outward fade, the secondary colour and blossoms only go with a leaf colour."
+                            : null);
                 })));
     }
 
@@ -565,7 +582,11 @@ final class PreviewMenu {
                         tree.colours = written.colours();
                         tree.bright = written.modifiers().contains("bright");
                         tree.out = written.modifiers().contains("out");
-                        for (String kind : TreeSelection.WITH_STRENGTH) {
+                        tree.secondary = TreeSelection.colour(written.modifiers(), "second");
+                        tree.blossom = TreeSelection.colour(written.modifiers(), "blossom");
+                        String bloom = TreeSelection.find(written.modifiers(), "bloom");
+                        tree.bloom = bloom == null ? TreeSelection.BLOOM : TreeSelection.strength(bloom, TreeSelection.BLOOM);
+                        for (String kind : List.of("mistle", "drymistle")) {
                             String modifier = TreeSelection.find(written.modifiers(), kind);
                             if (modifier != null) {
                                 tree.mistle = kind;
@@ -608,7 +629,10 @@ final class PreviewMenu {
     private static String written(Tree tree, boolean shares) {
         StringBuilder written = new StringBuilder(shares ? tree.share + "%" : "").append(tree.word);
         if (tree.colours != null) {
-            written.append('*').append(hex(tree.colours)).append(tree.bright ? "&bright" : "").append(tree.out ? "&out" : "");
+            written.append('*').append(hex(tree.colours)).append(tree.bright ? "&bright" : "").append(tree.out ? "&out" : "")
+                    .append(tree.secondary == 0 ? "" : "&second=" + hex(new int[] {tree.secondary}))
+                    .append(tree.blossom == 0 ? "" : "&blossom=" + hex(new int[] {tree.blossom}))
+                    .append(tree.blossom == 0 || tree.bloom == TreeSelection.BLOOM ? "" : "&bloom=" + tree.bloom);
         }
         if (!tree.mistle.equals(NONE)) {
             written.append('&').append(tree.mistle)
@@ -667,10 +691,47 @@ final class PreviewMenu {
         if (!also.isEmpty()) {
             line.append(Component.text(" (" + String.join(", ", also) + ")", NamedTextColor.GRAY));
         }
+        if (tree.colours != null && tree.secondary != 0) {
+            line.append(Component.text(" also ", NamedTextColor.GRAY)).append(swatch(new int[] {tree.secondary}));
+        }
+        if (tree.colours != null && tree.blossom != 0) {
+            line.append(Component.text(" blossoms ", NamedTextColor.GRAY)).append(swatch(new int[] {tree.blossom}))
+                    .append(Component.text(" " + tree.bloom + "%", NamedTextColor.GRAY));
+        }
         return line.build();
     }
 
     // ---- helpers ----------------------------------------------------------------------
+
+    /** One colour to choose: none, one of the player's own - a fade gives its first - or the one it had. */
+    private static List<SingleOptionDialogInput.OptionEntry> colourOptions(Map<String, String> colours, int current) {
+        List<SingleOptionDialogInput.OptionEntry> options = new ArrayList<>();
+        options.add(SingleOptionDialogInput.OptionEntry.create(NONE, Component.text("None"), current == 0));
+        boolean found = current == 0;
+        for (Map.Entry<String, String> colour : colours.entrySet()) {
+            int[] stops = TreeSelection.colours(colour.getValue());
+            if (stops != null) {
+                boolean chosen = !found && (stops[0] | LeafColours.PRESENT) == current;
+                found |= chosen;
+                options.add(SingleOptionDialogInput.OptionEntry.create("c_" + colour.getKey(),
+                        swatch(new int[] {stops[0]}).append(Component.text(" " + colour.getKey())), chosen));
+            }
+        }
+        if (!found) {
+            options.add(1, SingleOptionDialogInput.OptionEntry.create(AS_IT_WAS,
+                    swatch(new int[] {current}).append(Component.text(" as it was")), true));
+        }
+        return options;
+    }
+
+    /** The colour chosen among {@link #colourOptions}, PRESENT set, or 0 for none. */
+    private static int chosenColour(@Nullable String chosen, Map<String, String> colours, int current) {
+        if (chosen == null || chosen.equals(AS_IT_WAS)) {
+            return current;
+        }
+        int[] stops = chosen.startsWith("c_") ? TreeSelection.colours(colours.getOrDefault(chosen.substring(2), "")) : null;
+        return stops == null ? 0 : stops[0] | LeafColours.PRESENT;
+    }
 
     private boolean canChange(Player player, PreviewLibrary.Shelf shelf) {
         return shelf.player() != null ? shelf.player().equals(player.getUniqueId()) : player.hasPermission(NAMESPACES);

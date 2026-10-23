@@ -62,21 +62,32 @@ record PreviewSpec(List<Part> parts) {
                     }
                     for (String modifier : tree.modifiers()) {
                         String name = TreeSelection.name(modifier);
-                        if (!name.equals(modifier) && (!TreeSelection.WITH_STRENGTH.contains(name)
-                                || !modifier.substring(name.length() + 1).matches("[1-9][0-9]?|100"))) {
-                            throw new IllegalArgumentException("'&" + modifier + "' takes no strength; &mistle and"
-                                    + " &drymistle take one from 1 to 100, like &mistle=30");
-                        }
+                        String value = name.equals(modifier) ? null : modifier.substring(name.length() + 1);
                         if (!TreeSelection.MODIFIERS.contains(name)) {
                             throw new IllegalArgumentException("'&" + modifier + "' is not a modifier; there is "
                                     + String.join(", ", TreeSelection.MODIFIERS.stream().map(m -> "&" + m).toList()));
                         }
+                        if (TreeSelection.WITH_COLOUR.contains(name)) {
+                            int[] colours = value == null ? null : TreeSelection.colours(value);
+                            if (colours == null || colours.length != 1) {
+                                throw new IllegalArgumentException("&" + name + " takes one colour, like &" + name
+                                        + "=#ffb7c5");
+                            }
+                        } else if (value != null && (!TreeSelection.WITH_STRENGTH.contains(name)
+                                || !value.matches("[1-9][0-9]?|100"))) {
+                            throw new IllegalArgumentException("'&" + modifier + "' takes no value; &mistle, &drymistle"
+                                    + " and &bloom take one from 1 to 100, like &mistle=30");
+                        }
                     }
-                    for (String modifier : List.of("bright", "out")) {
-                        if (tree.colours() == null && tree.modifiers().contains(modifier)) {
+                    for (String modifier : List.of("bright", "out", "second", "blossom", "bloom")) {
+                        if (tree.colours() == null && TreeSelection.find(tree.modifiers(), modifier) != null) {
                             throw new IllegalArgumentException("&" + modifier + " goes behind a colour, like "
                                     + tree.word() + "*#f5d130>#c0392b&" + modifier);
                         }
+                    }
+                    if (TreeSelection.find(tree.modifiers(), "bloom") != null
+                            && TreeSelection.find(tree.modifiers(), "blossom") == null) {
+                        throw new IllegalArgumentException("&bloom says how much blossom; give one with &blossom=#ffb7c5");
                     }
                 }
             }

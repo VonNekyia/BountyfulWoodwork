@@ -139,9 +139,9 @@ final class TreePaster {
             }
         }
         LeafColours.Crown crown = LeafColours.Crown.of(leaves);
-        Map<Chunk, Map<Integer, Integer>> kept = new HashMap<>();
+        Map<Chunk, Map<Integer, LeafColours.Look>> kept = new HashMap<>();
         for (Placement placement : placements) {
-            Map<Integer, Integer> colours = kept.computeIfAbsent(
+            Map<Integer, LeafColours.Look> colours = kept.computeIfAbsent(
                     world.getChunkAt(placement.x() >> 4, placement.z() >> 4), LeafColours::kept);
             if (colours == null) {
                 continue;
@@ -153,8 +153,10 @@ final class TreePaster {
                 colours.remove(place);
             }
         }
+        // Format 2 only once the map reads it; until then chunks keep the colours alone.
+        boolean format2 = plugin.getConfig().getBoolean("leaf-colours.keep-format-2", false);
         kept.forEach((chunk, colours) -> {
-            if (LeafColours.keep(chunk, colours)) {
+            if (LeafColours.keep(chunk, colours, format2)) {
                 coloured.accept(chunk);
             }
         });

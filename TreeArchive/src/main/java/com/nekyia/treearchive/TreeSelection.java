@@ -35,11 +35,25 @@ record TreeSelection(List<Part> parts, Field field) {
      * out runs a fade from the middle of the crown to its edge instead of upwards, mistle
      * hangs mistletoe in the crown - moss with a bush on top, as the birches have it - and
      * drymistle dry mistletoe for fall trees, mangrove roots with dry grass. Mistletoe takes
-     * a strength, the share of the leaves it stands in for: mistle=30.
+     * a strength, the share of the leaves it stands in for: mistle=30. second=#f5d130 gives
+     * some of the leaves a secondary colour, blossom=#ffb7c5 blossoms, on bloom=40 percent
+     * of the leaves - 30 without.
      */
-    static final Set<String> MODIFIERS = Set.of("bright", "out", "mistle", "drymistle");
+    static final Set<String> MODIFIERS = Set.of("bright", "out", "mistle", "drymistle", "second", "blossom", "bloom");
     /** The modifiers that take a strength, from 1 to 100. */
-    static final Set<String> WITH_STRENGTH = Set.of("mistle", "drymistle");
+    static final Set<String> WITH_STRENGTH = Set.of("mistle", "drymistle", "bloom");
+    /** The modifiers that take one colour. */
+    static final Set<String> WITH_COLOUR = Set.of("second", "blossom");
+    /** How many of a tree's leaves bloom without a bloom=, in percent. */
+    static final int BLOOM = 30;
+
+    /** The colour written behind a modifier, second=#f5d130, with PRESENT set - or 0 for none. */
+    static int colour(Set<String> modifiers, String name) {
+        String modifier = find(modifiers, name);
+        int[] colours = modifier == null || name(modifier).equals(modifier) ? null
+                : colours(modifier.substring(name.length() + 1));
+        return colours == null || colours.length != 1 ? 0 : colours[0] | LeafColours.PRESENT;
+    }
 
     /** A modifier's name, without the strength behind it: mistle=30 is mistle. */
     static String name(String modifier) {
@@ -175,8 +189,14 @@ record TreeSelection(List<Part> parts, Field field) {
 
         /** How the word paints the leaves, or null for their own colours. */
         LeafColours.@Nullable Paint paint() {
-            return part == null || part.colours() == null ? null : new LeafColours.Paint(part.colours(),
-                    part.modifiers().contains("out"), part.modifiers().contains("bright"));
+            if (part == null || part.colours() == null) {
+                return null;
+            }
+            Set<String> modifiers = part.modifiers();
+            String bloom = find(modifiers, "bloom");
+            return new LeafColours.Paint(part.colours(), modifiers.contains("out"), modifiers.contains("bright"),
+                    colour(modifiers, "second"), colour(modifiers, "blossom"),
+                    bloom == null ? BLOOM : strength(bloom, BLOOM));
         }
 
         Set<String> modifiers() {

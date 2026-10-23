@@ -489,7 +489,9 @@ final class TreePreview implements Listener {
      * out empty only when asked to, taking away colours sent before.
      */
     private void sendColours(@Nullable Session session, Player player, Set<Long> chunks, boolean evenEmpty) {
-        if (!player.getListeningPluginChannels().contains(LeafColours.CHANNEL)) {
+        Set<String> channels = player.getListeningPluginChannels();
+        boolean format2 = channels.contains(LeafColours.LEAVES);
+        if (!format2 && !channels.contains(LeafColours.CHANNEL)) {
             return;
         }
         World world = player.getWorld();
@@ -497,9 +499,9 @@ final class TreePreview implements Listener {
         for (long chunk : chunks) {
             int chunkX = (int) (chunk >> 32);
             int chunkZ = (int) chunk;
-            Map<Integer, Integer> kept = world.isChunkLoaded(chunkX, chunkZ)
+            Map<Integer, LeafColours.Look> kept = world.isChunkLoaded(chunkX, chunkZ)
                     ? LeafColours.kept(world.getChunkAt(chunkX, chunkZ)) : null;
-            Map<Integer, Integer> colours = kept == null ? new HashMap<>() : kept;
+            Map<Integer, LeafColours.Look> colours = kept == null ? new HashMap<>() : kept;
             Set<Long> keys = shown == null ? null : shown.byChunk.get(chunk);
             if (shown != null && keys != null) {
                 for (long key : keys) {
@@ -519,8 +521,8 @@ final class TreePreview implements Listener {
                 }
             }
             if (evenEmpty || !colours.isEmpty()) {
-                player.sendPluginMessage(plugin, LeafColours.CHANNEL,
-                        LeafColours.encode(chunkX, chunkZ, LeafColours.grouped(colours)));
+                player.sendPluginMessage(plugin, format2 ? LeafColours.LEAVES : LeafColours.CHANNEL,
+                        LeafColours.encode(format2, chunkX, chunkZ, colours));
             }
         }
     }
@@ -677,7 +679,7 @@ final class TreePreview implements Listener {
     /** The mod made itself known, perhaps after chunks went out: it gets their colours now. */
     @EventHandler
     public void onModFound(PlayerRegisterChannelEvent event) {
-        if (!event.getChannel().equals(LeafColours.CHANNEL)) {
+        if (!event.getChannel().equals(LeafColours.CHANNEL) && !event.getChannel().equals(LeafColours.LEAVES)) {
             return;
         }
         Player player = event.getPlayer();
@@ -689,7 +691,8 @@ final class TreePreview implements Listener {
 
     /** Keeps watch on a player's connection for chunks going out, and what overwrites ghosts. */
     private void keep(Player player) {
-        if (player.getListeningPluginChannels().contains(LeafColours.CHANNEL)) {
+        if (player.getListeningPluginChannels().contains(LeafColours.CHANNEL)
+                || player.getListeningPluginChannels().contains(LeafColours.LEAVES)) {
             modded.add(player.getUniqueId());
         }
         Channel channel = ((CraftPlayer) player).getHandle().connection.connection.channel;

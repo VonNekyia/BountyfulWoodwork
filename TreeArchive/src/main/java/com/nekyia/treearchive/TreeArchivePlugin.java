@@ -22,6 +22,7 @@ public final class TreeArchivePlugin extends JavaPlugin {
 
         TreePaster paster = new TreePaster(this);
         getServer().getMessenger().registerOutgoingPluginChannel(this, LeafColours.CHANNEL);
+        getServer().getMessenger().registerOutgoingPluginChannel(this, LeafColours.LEAVES);
         TreePreview preview = new TreePreview(this, archive, paster);
         paster.onColoured(preview::coloured);
         TreeBrush brush = new TreeBrush(this, archive, paster, preview);
