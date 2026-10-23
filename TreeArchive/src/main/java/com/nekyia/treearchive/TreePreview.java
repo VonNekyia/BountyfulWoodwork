@@ -253,11 +253,13 @@ final class TreePreview implements Listener {
             return;
         }
 
+        // Only admins go past the server's limit; everyone else may stay under it.
+        int serverLimit = Math.max(1, config("max-trees", 500));
+        int limit = options.limit() > 0 ? options.limit() : serverLimit;
         Session session = new Session(key, spec, seed, world.getUID(), centreX, centreZ, radius,
                 Math.max(world.getMinHeight(), config("min-y", -64)),
                 Math.min(world.getMaxHeight() - 1, config("max-y", 160)), continuous,
-                options.limit() > 0 ? options.limit() : Math.max(1, config("max-trees", 500)),
-                options.bypassTerrain());
+                player.hasPermission(TreeBrush.PERMISSION) ? limit : Math.min(limit, serverLimit), options.bypassTerrain());
         sessions.put(key, session);
         session.viewers.add(player.getUniqueId());
         watch(player, session);

@@ -89,7 +89,9 @@ layout:
   tick-budget-ms: 10
 
 # /ta preview shows a forest to you alone: every marker block around where you stand
-# becomes an archived tree, sent to your client and nowhere else.
+# becomes an archived tree, sent to your client and nowhere else. /ta preview alone opens
+# a menu to put previews together, keep them as presets and paint their trees;
+# writing them out works too:
 #   /ta preview gold_block:silver_fir,white_pine/diamond_block:beech
 #   /ta preview gold_block,diamond_block:beech
 # Asking again shuffles the trees; /ta preview player <name> sends someone yours, and

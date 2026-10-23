@@ -11,9 +11,10 @@ authors: [ gerryxn ]
 commands:
   ta:
     description: Archives tree blueprints and puts them into the world.
-    usage: /ta reload | /ta brush <type|creator|block> <what> | clear | /ta debug generation <trees|off> | /ta type [name|remove <name>] | /ta trunkpos | /ta archive <type> <creator> [--size <category>] [--overwrite <tree>] | /ta list [type|size|creator] | /ta duplicates | /ta patreon <name> <link> | /ta layout categorized [trees] | /ta preview <blocks:trees/...|player <name>|clear> | /ta forest <preset> [x z]
+    usage: /ta reload | /ta brush <type|creator|block> <what> | clear | /ta debug generation <trees|off> | /ta type [name|remove <name>] | /ta trunkpos | /ta archive <type> <creator> [--size <category>] [--overwrite <tree>] | /ta list [type|size|creator] | /ta duplicates | /ta patreon <name> <link> | /ta layout categorized [trees] | /ta preview [blocks:trees/...|#hash|player <name>|clear] | /ta forest <preset> [x z]
     aliases: [ treearchive ]
-    # Low, so anyone can open a preview shared with them; the rest checks for admin.
+    # Low, so anyone can use the preview menu and open previews shared with them; the
+    # rest checks for admin.
     permission: treearchive.preview
   "/trunkpos":
     description: Marks the block a tree stands on, for /ta archive.
@@ -25,6 +26,10 @@ permissions:
     default: op
     children:
       treearchive.preview: true
+      treearchive.namespaces: true
   treearchive.preview:
-    description: Open tree previews shared with you.
+    description: Use the preview menu, and open tree previews shared with you.
     default: true
+  treearchive.namespaces:
+    description: Change the presets of preview namespaces, and start new ones.
+    default: op

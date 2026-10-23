@@ -30,6 +30,7 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.inventory.ItemStack;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -48,13 +49,13 @@ import org.jspecify.annotations.Nullable;
  * /ta duplicates - finds trees archived twice, turned or mirrored.
  * /ta patreon name link - remembers an artist who is not a player here.
  * /ta layout categorized [trees] - lays the archive out on the tree map.
- * /ta preview blocks:trees/... | player name | clear - shows a forest to you alone.
+ * /ta preview - the preview menu; blocks:trees/... | #hash | player name | clear - shows a forest to you alone.
  * /ta forest preset [x z] - plants a forest preset on the middle of the map.
  */
 final class ArchiveCommand implements CommandExecutor, TabCompleter {
 
     /** Words that follow /ta preview preset and so cannot name a preset. */
-    private static final List<String> PRESET_WORDS = List.of("add", "remove", "user", "namespace");
+    static final List<String> PRESET_WORDS = List.of("add", "remove", "user", "namespace");
 
     /**
      * A preset as written: name for one of your own, player:name for someone else's - to
@@ -73,6 +74,7 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
     private final TreeDuplicates duplicates;
     private final TreePreview preview;
     private final TrunkPosCommand trunkPos;
+    private final PreviewMenu menu;
 
     ArchiveCommand(PreviewLibrary library, TreeBrush brush,
                     DebugGeneration debug, TreeArchive archive, TreeLayout layout,
@@ -87,6 +89,8 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
         this.duplicates = duplicates;
         this.preview = preview;
         this.trunkPos = trunkPos;
+        this.menu = new PreviewMenu(JavaPlugin.getPlugin(TreeArchivePlugin.class), library, archive, preview,
+                (player, parts) -> preview(player, join(new String[] {"preview"}, written(parts).split(" "))));
     }
 
     @Override
@@ -647,12 +651,13 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
     }
 
     /**
-     * Whether this is someone opening a preview shared with them, or closing it: a hash as
-     * it came, nothing added - limit, place and all are what whoever made it chose.
+     * Whether this is someone opening the preview menu, a preview shared with them, or
+     * closing it: a hash as it came, nothing added - spec, place and all are what whoever
+     * made it chose, and the limit is clamped in TreePreview.
      */
     private static boolean opensSharedPreview(String[] args) {
-        return args.length == 2 && args[0].equalsIgnoreCase("preview")
-                && (args[1].equalsIgnoreCase("clear") || args[1].startsWith("#"));
+        return args.length >= 1 && args[0].equalsIgnoreCase("preview") && (args.length == 1
+                || args.length == 2 && (args[1].equalsIgnoreCase("clear") || args[1].startsWith("#")));
     }
 
     /**
@@ -664,6 +669,7 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
      * beech*#f5d130>#c0392b a fade up the crown, or out of it with &out; modifiers
      * follow per tree, beech*#ffffff&bright putting its leaves on their lighter texture,
      * beech&mistle hanging mistletoe in its crown and beech&drymistle dry mistletoe.
+     * /ta preview alone opens the menu, where all of this is put together by clicking.
      * /ta preview player name - sends someone a link to the preview you are looking at.
      * /ta preview clear - takes the preview away again.
      */
@@ -673,9 +679,7 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
             return;
         }
         if (args.length == 1) {
-            player.sendMessage(Component.text("Usage: /ta preview <blocks:trees/...> [--continuous] [--limit <trees>]"
-                    + " [--bypassterrain] | #<hash> | preset [...] | player <name> | clear."
-                    + " Example: gold_block:silver_fir,white_pine/diamond_block:beech", NamedTextColor.RED));
+            menu.open(player);
             return;
         }
         if (args[1].equalsIgnoreCase("preset")) {

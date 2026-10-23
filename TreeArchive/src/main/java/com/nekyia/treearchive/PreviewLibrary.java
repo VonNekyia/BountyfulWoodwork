@@ -7,7 +7,9 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.bukkit.Material;
@@ -21,7 +23,8 @@ import org.jspecify.annotations.Nullable;
  * What previews are kept as: presets, built up one block at a time and so as long as they
  * need to be - on each player's own shelf, theirs alone to change, or in namespaces
  * everyone shares - and hashes: short names for preview commands, for links that would
- * not fit into a chat line, and for keeping.
+ * not fit into a chat line, and for keeping. Each player also keeps colours by name, to
+ * paint trees with in the preview menu.
  */
 final class PreviewLibrary {
 
@@ -41,20 +44,53 @@ final class PreviewLibrary {
     private final File presetsFile;
     private final File namespacesFile;
     private final File hashesFile;
+    private final File coloursFile;
     /** Player uuid -> name: their last name, presets: name -> parts. */
     private final YamlConfiguration presets;
     /** Namespace -> name -> parts. */
     private final YamlConfiguration namespaces;
     private final YamlConfiguration hashes;
+    /** Player uuid -> colour name -> its colours, as a tree is painted: #f5d130>#c0392b. */
+    private final YamlConfiguration colours;
 
     PreviewLibrary(JavaPlugin plugin) {
         this.plugin = plugin;
         presetsFile = new File(plugin.getDataFolder(), "presets.yml");
         namespacesFile = new File(plugin.getDataFolder(), "namespaces.yml");
         hashesFile = new File(plugin.getDataFolder(), "hashes.yml");
+        coloursFile = new File(plugin.getDataFolder(), "colours.yml");
         presets = YamlConfiguration.loadConfiguration(presetsFile);
         namespaces = YamlConfiguration.loadConfiguration(namespacesFile);
         hashes = YamlConfiguration.loadConfiguration(hashesFile);
+        colours = YamlConfiguration.loadConfiguration(coloursFile);
+    }
+
+    /** A player's colours, name -> colours as written behind a tree's *, in the order they were made. */
+    Map<String, String> colours(UUID player) {
+        ConfigurationSection section = colours.getConfigurationSection(player.toString());
+        Map<String, String> found = new LinkedHashMap<>();
+        if (section != null) {
+            section.getKeys(false).forEach(name -> found.put(name, section.getString(name, "")));
+        }
+        return found;
+    }
+
+    /** Keeps a colour under a name, or forgets it when {@code written} is null. */
+    void colour(UUID player, String name, @Nullable String written) {
+        colours.set(player + "." + name, written);
+        save(colours, coloursFile);
+    }
+
+    /** Puts a whole preset in place of whatever was kept under its name - none without parts. */
+    void set(Shelf shelf, Player editor, String name, List<String> parts) {
+        if (shelf.player() != null) {
+            presets.set(shelf.player() + ".name", editor.getName());
+        }
+        yaml(shelf).set(path(shelf) + "." + name, parts.isEmpty() ? null : parts);
+        if (shelf.namespace() != null && presets(shelf).isEmpty()) {
+            namespaces.set(shelf.namespace(), null);
+        }
+        save(shelf);
     }
 
     /** The player who keeps presets under this name, or null. */
