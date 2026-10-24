@@ -132,8 +132,9 @@ forest:
     gold_block: any
 
 # Leaf colours of trees placed for real are kept in their chunks, for the main server and
-# the map. Secondary colours and blossoms need format 2 there: turn this on once the map
-# (heroic-map-renderer) reads format 2 on prod. Until then chunks keep format 1, and
+# the map. Secondary colours and blossoms need format 2 there: turn this on once both
+# read it - the map (heroic-map-renderer) on prod, and Woodwork on the main server, which
+# would show format 2 chunks dark otherwise. Until then chunks keep format 1, and
 # placed trees keep their colour without secondary colour and blossoms. Previews show
 # them either way.
 leaf-colours:
