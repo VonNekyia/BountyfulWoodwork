@@ -9,6 +9,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -18,6 +19,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeMap;
 import net.kyori.adventure.text.format.TextColor;
 import org.bukkit.Chunk;
 import org.bukkit.Material;
@@ -39,21 +41,26 @@ import org.jspecify.annotations.Nullable;
  * The leaf colours of trees, kept as data in each chunk and shown to players who have the
  * ColorfulLeaves mod. A tree gets its colour once, from config.yml by its type - one
  * colour, one of several, or a fade over the crown - and keeps it from then on, whatever
- * the config says later. Colours already in a chunk, like those trees from the creative
- * server bring along, are never painted over. Players without the mod are never sent
- * anything.
+ * the config says later. Leaves already in a chunk, like those trees from the creative
+ * server bring along with secondary colours and blossoms, are never painted over. Players
+ * without the mod are never sent anything.
  */
 final class LeafColors implements Listener {
 
     /** The mod's channel; the format is described in the mod's ChunkColors. */
     static final String CHANNEL = "colorfulleaves:chunk";
     /**
+     * Where mods that read format 2 - a secondary colour and blossoms - get it. Older mods
+     * listen on CHANNEL alone, and get format 1 there.
+     */
+    static final String LEAVES = "colorfulleaves:leaves";
+    /**
      * Where a chunk keeps its colours, which the map renderer reads too: the mod's payload
-     * without chunkX and chunkZ. The contract is heroic-map-renderer's
-     * docs/benutzung/laubfarben.md - change it only together with the map and the mod.
+     * without chunkX and chunkZ, in format 1 or 2. The contract is heroic-map-renderer's
+     * docs/benutzung/laubfarben.md - change it only together with the map, the mod and
+     * TreeArchive.
      */
     static final NamespacedKey STORED = Objects.requireNonNull(NamespacedKey.fromString("heroicmap:leaf_colors"));
-    private static final int VERSION = 1;
     private static final int Y_OFFSET = 2048;
     /** The steps a fade is cut into: smooth to the eye, and few colours to store. */
     private static final int FADE_STEPS = 32;
@@ -86,6 +93,23 @@ final class LeafColors implements Listener {
     private record Crown(int bottom, int top, double middleX, double middleZ, double radius) {
     }
 
+    /**
+     * How one leaf looks: its colour, bright in bit 24, and - format 2 only - a secondary
+     * colour and a blossom, each with bit 24 when there is one. Woodwork paints colours
+     * alone; secondary colours and blossoms come from TreeArchive and are kept as they are.
+     */
+    record Look(int colour, int secondary, int blossom) {
+
+        /** The leaf as format 1 tells it: its colour alone. */
+        Look plain() {
+            return secondary == 0 && blossom == 0 ? this : new Look(colour, 0, 0);
+        }
+    }
+
+    /** Groups in a fixed order, as TreeArchive writes them: the same leaves give the same bytes. */
+    private static final Comparator<Look> ORDER = Comparator.comparingInt(Look::colour)
+            .thenComparingInt(Look::secondary).thenComparingInt(Look::blossom);
+
     private final JavaPlugin plugin;
     private final TreeRegistry registry;
     private Map<String, Paint> paints = Map.of();
@@ -96,6 +120,8 @@ final class LeafColors implements Listener {
      * player loads them, else colouring one tree would load the next, through the forest.
      */
     private boolean colouring;
+    /** Players whose chunks go out again next tick, since their mod named its channels. */
+    private final Set<Player> found = new HashSet<>();
 
     LeafColors(JavaPlugin plugin, TreeRegistry registry) {
         this.plugin = plugin;
@@ -207,13 +233,8 @@ final class LeafColors implements Listener {
             }
         }
         for (Chunk chunk : updated) {
-            byte[] payload = null;
-            for (Player player : chunk.getPlayersSeeingChunk()) {
-                if (player.getListeningPluginChannels().contains(CHANNEL)) {
-                    payload = payload != null ? payload : payload(chunk.getX(), chunk.getZ(), stored(chunk));
-                    player.sendPluginMessage(plugin, CHANNEL, payload);
-                }
-            }
+            byte[] stored = stored(chunk);
+            chunk.getPlayersSeeingChunk().forEach(player -> send(player, chunk, stored));
         }
     }
 
@@ -222,31 +243,31 @@ final class LeafColors implements Listener {
      * yet. Every chunk whose colours changed goes into updated.
      */
     private void update(Chunk chunk, Set<Chunk> updated) {
-        Map<Integer, Integer> colors = read(chunk);
-        if (colors == null) {
+        Map<Integer, Look> looks = read(chunk);
+        if (looks == null) {
             return;
         }
-        if (colors.keySet().removeIf(position -> !Tag.LEAVES.isTagged(block(chunk, position)))) {
-            write(chunk, colors);
+        if (looks.keySet().removeIf(position -> !Tag.LEAVES.isTagged(block(chunk, position)))) {
+            write(chunk, looks);
             updated.add(chunk);
         }
         World world = chunk.getWorld();
         for (TreePart part : List.copyOf(registry.partsIn(world, chunk.getChunkKey()))) {
-            if (uncoloured(chunk, part, colors)) {
+            if (uncoloured(chunk, part, looks)) {
                 colour(world, part, updated);
             }
         }
     }
 
     /** A tree with a colour in the config, standing leaves to show it, and none coloured yet. */
-    private boolean uncoloured(Chunk chunk, TreePart part, Map<Integer, Integer> colors) {
+    private boolean uncoloured(Chunk chunk, TreePart part, Map<Integer, Look> looks) {
         if (paintOf(part) == null) {
             return false;
         }
         boolean leaves = false;
         for (Map.Entry<Long, Material> block : part.blocks().entrySet()) {
             int position = position(block.getKey());
-            if (colors.containsKey(position)) {
+            if (looks.containsKey(position)) {
                 return false;
             }
             leaves |= TINTED.contains(block.getValue()) && block(chunk, position) == block.getValue();
@@ -266,7 +287,7 @@ final class LeafColors implements Listener {
         }
         Crown crown = paint instanceof Fade ? crown(blocks) : null;
 
-        Map<Long, Map<Integer, Integer>> byChunk = new HashMap<>();
+        Map<Long, Map<Integer, Look>> byChunk = new HashMap<>();
         blocks.forEach((key, material) -> {
             int x = BlockKeys.x(key);
             int y = BlockKeys.y(key);
@@ -282,19 +303,19 @@ final class LeafColors implements Listener {
                 case Fade fade -> fade(fade, Objects.requireNonNull(crown), x, y, z) | (fade.bright() ? BRIGHT : 0);
             };
             byChunk.computeIfAbsent(Chunk.getChunkKey(x >> 4, z >> 4), ignored -> new HashMap<>())
-                    .put(position(key), color);
+                    .put(position(key), new Look(color, 0, 0));
         });
         byChunk.forEach((chunkKey, leaves) -> {
             Chunk chunk = world.getChunkAt((int) (long) chunkKey, (int) (chunkKey >> 32));
-            Map<Integer, Integer> colors = read(chunk);
-            if (colors == null) {
+            Map<Integer, Look> looks = read(chunk);
+            if (looks == null) {
                 return;
             }
-            Map<Integer, Integer> before = Map.copyOf(colors);
-            // Colours already there stay, wherever they came from.
-            leaves.forEach(colors::putIfAbsent);
-            if (!colors.equals(before)) {
-                write(chunk, colors);
+            Map<Integer, Look> before = Map.copyOf(looks);
+            // Leaves already there stay as they are, wherever they came from.
+            leaves.forEach(looks::putIfAbsent);
+            if (!looks.equals(before)) {
+                write(chunk, looks);
                 updated.add(chunk);
             }
         });
@@ -360,33 +381,51 @@ final class LeafColors implements Listener {
         sendIfColoured(event.getPlayer(), event.getChunk());
     }
 
-    /** The client names its channels only after the first chunks went out. */
+    /**
+     * The client names its channels only after the first chunks went out. A mod that reads
+     * format 2 names both at once; its chunks go out once all the same.
+     */
     @EventHandler
     public void onModFound(PlayerRegisterChannelEvent event) {
-        if (event.getChannel().equals(CHANNEL)) {
-            Player player = event.getPlayer();
-            plugin.getServer().getScheduler().runTask(plugin,
-                    () -> player.getSentChunks().forEach(chunk -> sendIfColoured(player, chunk)));
+        Player player = event.getPlayer();
+        if ((event.getChannel().equals(CHANNEL) || event.getChannel().equals(LEAVES)) && found.add(player)) {
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                found.remove(player);
+                player.getSentChunks().forEach(chunk -> sendIfColoured(player, chunk));
+            });
         }
     }
 
     /** A chunk the client has just got holds no colours yet, so one without any needs nothing. */
     private void sendIfColoured(Player player, Chunk chunk) {
         byte[] stored = stored(chunk);
-        if (stored != null && player.isOnline() && player.getListeningPluginChannels().contains(CHANNEL)) {
-            player.sendPluginMessage(plugin, CHANNEL, payload(chunk.getX(), chunk.getZ(), stored));
+        if (stored != null && player.isOnline()) {
+            send(player, chunk, stored);
         }
     }
 
-    /** The chunk's stored colours as they are, or null without any - or with some of another version. */
+    /**
+     * A chunk's leaves, or none to take them away: as stored on LEAVES to a mod that reads
+     * format 2, in format 1 on CHANNEL to an older one. Players without the mod get nothing.
+     */
+    private void send(Player player, Chunk chunk, byte @Nullable [] stored) {
+        Set<String> channels = player.getListeningPluginChannels();
+        if (channels.contains(LEAVES)) {
+            player.sendPluginMessage(plugin, LEAVES, payload(chunk.getX(), chunk.getZ(), stored));
+        } else if (channels.contains(CHANNEL)) {
+            player.sendPluginMessage(plugin, CHANNEL, payload(chunk.getX(), chunk.getZ(), format1(stored)));
+        }
+    }
+
+    /** The chunk's stored leaves as they are, or null without any - or with some of an unknown format. */
     private static byte @Nullable [] stored(Chunk chunk) {
         PersistentDataContainer data = chunk.getPersistentDataContainer();
         byte[] bytes = data.has(STORED, PersistentDataType.BYTE_ARRAY) ? data.get(STORED, PersistentDataType.BYTE_ARRAY) : null;
-        return bytes != null && bytes.length > 0 && bytes[0] == VERSION ? bytes : null;
+        return bytes != null && bytes.length > 0 && (bytes[0] == 1 || bytes[0] == 2) ? bytes : null;
     }
 
-    /** Position -> colour; null when what is stored is not ours to read, and so not ours to change. */
-    private static @Nullable Map<Integer, Integer> read(Chunk chunk) {
+    /** Position -> look; null when what is stored is not ours to read, and so not ours to change. */
+    private static @Nullable Map<Integer, Look> read(Chunk chunk) {
         PersistentDataContainer data = chunk.getPersistentDataContainer();
         if (!data.has(STORED)) {
             return new HashMap<>();
@@ -394,13 +433,13 @@ final class LeafColors implements Listener {
         return data.has(STORED, PersistentDataType.BYTE_ARRAY) ? decode(data.get(STORED, PersistentDataType.BYTE_ARRAY)) : null;
     }
 
-    /** Only called when the colours changed: a chunk written to counts as unsaved, for the map too. */
-    private static void write(Chunk chunk, Map<Integer, Integer> colors) {
+    /** Only called when the leaves changed: a chunk written to counts as unsaved, for the map too. */
+    private static void write(Chunk chunk, Map<Integer, Look> looks) {
         PersistentDataContainer data = chunk.getPersistentDataContainer();
-        if (colors.isEmpty()) {
+        if (looks.isEmpty()) {
             data.remove(STORED);
         } else {
-            data.set(STORED, PersistentDataType.BYTE_ARRAY, encode(colors));
+            data.set(STORED, PersistentDataType.BYTE_ARRAY, encode(looks));
         }
     }
 
@@ -416,43 +455,57 @@ final class LeafColors implements Listener {
         return (BlockKeys.x(key) & 15) | (BlockKeys.z(key) & 15) << 4 | (BlockKeys.y(key) + Y_OFFSET) << 8;
     }
 
-    /** Stored bytes -> position -> colour; null if they do not follow version 1. A position named twice: the last counts. */
-    static @Nullable Map<Integer, Integer> decode(byte[] bytes) {
+    /**
+     * Stored bytes -> position -> look, from format 1 or 2; null if they follow neither. A
+     * position named twice: the last counts.
+     */
+    static @Nullable Map<Integer, Look> decode(byte[] bytes) {
         try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(bytes))) {
-            if (in.readByte() != VERSION) {
+            int version = in.readByte();
+            if (version != 1 && version != 2) {
                 return null;
             }
-            Map<Integer, Integer> colors = new HashMap<>();
+            Map<Integer, Look> looks = new HashMap<>();
             int groups = in.readInt();
             if (groups < 0) {
                 return null;
             }
             for (int group = 0; group < groups; group++) {
-                int color = in.readInt();
+                Look look = new Look(in.readInt(), version == 2 ? in.readInt() : 0, version == 2 ? in.readInt() : 0);
                 int count = in.readInt();
                 if (count < 0) {
                     return null;
                 }
                 for (int i = 0; i < count; i++) {
-                    colors.put(in.readInt(), color);
+                    looks.put(in.readInt(), look);
                 }
             }
-            return in.available() == 0 ? colors : null;
+            return in.available() == 0 ? looks : null;
         } catch (IOException e) {
             return null;
         }
     }
 
-    /** Position -> colour, as stored: version, groups, per group colour, count and positions. */
-    static byte[] encode(Map<Integer, Integer> colors) {
-        Map<Integer, List<Integer>> groups = new HashMap<>();
-        colors.forEach((position, color) -> groups.computeIfAbsent(color, ignored -> new ArrayList<>()).add(position));
+    /**
+     * Position -> look, as stored: format 2 where a leaf has a secondary colour or a blossom,
+     * else format 1, which the map reads already. Version, groups, per group colour - and in
+     * format 2 secondary and blossom - count and positions.
+     */
+    static byte[] encode(Map<Integer, Look> looks) {
+        boolean format2 = looks.values().stream().anyMatch(look -> !look.equals(look.plain()));
+        Map<Look, List<Integer>> groups = new TreeMap<>(ORDER);
+        new TreeMap<>(looks).forEach((position, look) -> groups.computeIfAbsent(look, ignored -> new ArrayList<>())
+                .add(position));
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (DataOutputStream out = new DataOutputStream(bytes)) {
-            out.writeByte(VERSION);
+            out.writeByte(format2 ? 2 : 1);
             out.writeInt(groups.size());
-            for (Map.Entry<Integer, List<Integer>> group : groups.entrySet()) {
-                out.writeInt(group.getKey());
+            for (Map.Entry<Look, List<Integer>> group : groups.entrySet()) {
+                out.writeInt(group.getKey().colour());
+                if (format2) {
+                    out.writeInt(group.getKey().secondary());
+                    out.writeInt(group.getKey().blossom());
+                }
                 out.writeInt(group.getValue().size());
                 for (int position : group.getValue()) {
                     out.writeInt(position);
@@ -462,6 +515,19 @@ final class LeafColors implements Listener {
             throw new UncheckedIOException(e);
         }
         return bytes.toByteArray();
+    }
+
+    /** Stored bytes in format 1, for older mods: leaves of one colour in one group, whatever else they had. */
+    static byte @Nullable [] format1(byte @Nullable [] stored) {
+        if (stored == null || stored[0] == 1) {
+            return stored;
+        }
+        Map<Integer, Look> looks = decode(stored);
+        if (looks == null) {
+            return null;
+        }
+        looks.replaceAll((position, look) -> look.plain());
+        return encode(looks);
     }
 
     /** What the mod is sent: the stored bytes with the chunk put in after the version. Without any, it takes the chunk's colours away. */

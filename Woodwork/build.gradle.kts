@@ -24,6 +24,12 @@ dependencies {
     compileOnly(files(testServerPluginFolder.map { folder ->
         folder.asFileTree.matching { include("nexo-*.jar") }
     }))
+
+    // TreeArchive writes the same leaf colours into chunks; the tests read its bytes.
+    testImplementation(project(":TreeArchive"))
+    testImplementation(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.launcher)
 }
 
 java {
@@ -36,6 +42,10 @@ base {
 }
 
 tasks {
+    test {
+        useJUnitPlatform()
+    }
+
     build {
         dependsOn(shadowJar)
         finalizedBy("deployToMainServer")

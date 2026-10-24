@@ -28,6 +28,7 @@ public final class BountyfulWoodwork extends JavaPlugin {
         felling.reload();
         LeafColors leafColors = new LeafColors(this, registry);
         getServer().getMessenger().registerOutgoingPluginChannel(this, LeafColors.CHANNEL);
+        getServer().getMessenger().registerOutgoingPluginChannel(this, LeafColors.LEAVES);
         registry.onChange(leafColors::changed);
         leafColors.reload();
 
