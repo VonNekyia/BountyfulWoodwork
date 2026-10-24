@@ -12,6 +12,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 public final class TreeArchivePlugin extends JavaPlugin {
 
     private TreeArchive archive;
+    private TreeLayout layout;
 
     @Override
     public void onEnable() {
@@ -37,7 +38,7 @@ public final class TreeArchivePlugin extends JavaPlugin {
         TrunkPosCommand trunkPos = new TrunkPosCommand();
         Objects.requireNonNull(getCommand("/trunkpos")).setExecutor(trunkPos);
 
-        TreeLayout layout = new TreeLayout(this, archive, paster);
+        layout = new TreeLayout(this, archive, paster);
         plugins.registerEvents(layout, this);
         ArchiveCommand command = new ArchiveCommand(new PreviewLibrary(this), brush, debug, archive,
                 layout, new TreeForest(this, archive, paster),
@@ -49,6 +50,9 @@ public final class TreeArchivePlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (layout != null) {
+            layout.stop();
+        }
         if (archive != null) {
             archive.close();
         }

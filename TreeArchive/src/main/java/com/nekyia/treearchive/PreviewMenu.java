@@ -27,6 +27,9 @@ import net.kyori.adventure.text.event.ClickCallback;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextColor;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jspecify.annotations.Nullable;
 
@@ -39,8 +42,11 @@ import org.jspecify.annotations.Nullable;
  * away, or kept as a preset: on the player's own shelf, or in a namespace everyone can
  * use and only those with treearchive.namespaces change. What the menu makes is written
  * the way /ta preview reads it, so presets, hashes and shared links work as before.
+ *
+ * <p>Whatever comes back from a dialog is the client's word only: a changed client sends
+ * any option and any text, so every answer is checked here as if it were typed.
  */
-final class PreviewMenu {
+final class PreviewMenu implements Listener {
 
     /** Who may change the presets of namespaces, and start new ones. */
     static final String NAMESPACES = "treearchive.namespaces";
@@ -52,6 +58,12 @@ final class PreviewMenu {
     private static final String NONE = "none";
     private static final String WRITTEN = "written";
     private static final String AS_IT_WAS = "as_it_was";
+    /** Names of presets, namespaces and colours. */
+    private static final String NAME = "[a-z0-9_-]{1,32}";
+    /** How much one player keeps and puts together, so no one fills the server's files. */
+    private static final int MAX_KEPT = 64;
+    private static final int MAX_MARKERS = 32;
+    private static final int MAX_TREES = 16;
 
     /** One tree of a marker block: what it is, its share among the block's trees, its paint and mistletoe. */
     private static final class Tree {
@@ -107,6 +119,12 @@ final class PreviewMenu {
         this.archive = archive;
         this.preview = preview;
         this.show = show;
+        plugin.getServer().getPluginManager().registerEvents(this, plugin);
+    }
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        drafts.remove(event.getPlayer().getUniqueId());
     }
 
     void open(Player player) {
@@ -190,13 +208,17 @@ final class PreviewMenu {
         }
         Draft read = draft(shelf, name, parts);
         List<ActionButton> buttons = new ArrayList<>();
-        buttons.add(button("Show", "Grows it around you", who -> show.accept(who, parts)));
+        buttons.add(button("Show", "Grows it around you", who -> show(who, parts)));
         if (canChange(player, shelf)) {
             buttons.add(button("Change", null, who -> {
                 drafts.put(who.getUniqueId(), draft(shelf, name, parts));
                 editor(who, null);
             }));
             buttons.add(button("Delete", null, who -> confirm(who, "Delete the preset " + name + "?", () -> {
+                if (!canChange(who, shelf)) {
+                    presets(who, shelf, "Only mods and admins change namespaces.");
+                    return;
+                }
                 library.set(shelf, who, name, List.of());
                 presets(who, shelf, "Deleted " + name + ".");
             }, () -> preset(who, shelf, name, null))));
@@ -240,6 +262,10 @@ final class PreviewMenu {
         }
         buttons.add(button("Add a marker block", "A block whose every copy around you becomes a tree", (view, who) -> {
             keep(view, draft, who);
+            if (draft.markers.size() >= MAX_MARKERS) {
+                editor(who, MAX_MARKERS + " marker blocks are the most.");
+                return;
+            }
             draft.markers.add(new Marker());
             marker(who, draft.markers.size() - 1, null);
         }));
@@ -248,7 +274,7 @@ final class PreviewMenu {
             if (draft.markers.isEmpty()) {
                 editor(who, "Add a marker block first.");
             } else {
-                show.accept(who, parts(draft));
+                show(who, parts(draft));
             }
         }));
         buttons.add(button("Save", draft.name == null ? "Asks for a name" : "Keeps it as " + draft.name
@@ -298,6 +324,10 @@ final class PreviewMenu {
         }
         buttons.add(button("Add a tree", "Without any, the block grows every archived tree", (view, who) -> {
             marker.blocks = blocks(view);
+            if (marker.trees.size() >= MAX_TREES) {
+                marker(who, index, MAX_TREES + " trees are the most for one block.");
+                return;
+            }
             marker.trees.add(new Tree());
             tree(who, index, marker.trees.size() - 1, null);
         }));
@@ -398,8 +428,9 @@ final class PreviewMenu {
                         ? "Colours to paint with come from My colours; you have none yet." : null),
                 inputs, buttons, button("Done", null, (view, who) -> {
                     String type = Objects.requireNonNullElse(view.getText("type"), WRITTEN);
-                    String word = (type.equals(WRITTEN) ? Objects.requireNonNullElse(view.getText("word"), "") : type)
+                    String written = (type.equals(WRITTEN) ? Objects.requireNonNullElse(view.getText("word"), "") : type)
                             .toLowerCase(Locale.ROOT).replaceAll("[\\s,/:*&%]", "");
+                    String word = written.substring(0, Math.min(written.length(), 100));
                     long matching = archive.entries().stream().filter(entry -> TreeArchive.matches(entry, word)).count();
                     if (word.isEmpty() || matching == 0) {
                         tree(who, markerIndex, index, word.isEmpty() ? "Choose a tree type or write words."
@@ -407,7 +438,7 @@ final class PreviewMenu {
                         return;
                     }
                     tree.word = word;
-                    tree.share = Math.round(Objects.requireNonNullElse(view.getFloat("share"), 1f));
+                    tree.share = percent(view.getFloat("share"), 1);
                     String paint = Objects.requireNonNullElse(view.getText("paint"), NONE);
                     if (paint.equals(NONE)) {
                         tree.colours = null;
@@ -418,10 +449,11 @@ final class PreviewMenu {
                     tree.out = Boolean.TRUE.equals(view.getBoolean("out"));
                     tree.secondary = chosenColour(view.getText("second"), colours, tree.secondary);
                     tree.blossom = chosenColour(view.getText("blossom"), colours, tree.blossom);
-                    tree.bloom = Math.round(Objects.requireNonNullElse(view.getFloat("bloom"), (float) TreeSelection.BLOOM));
-                    tree.mistle = Objects.requireNonNullElse(view.getText("mistle"), NONE);
-                    tree.strength = Math.round(Objects.requireNonNullElse(view.getFloat("strength"),
-                            (float) TreePaster.MISTLE_STRENGTH));
+                    tree.bloom = percent(view.getFloat("bloom"), TreeSelection.BLOOM);
+                    // Only the options there are: the rest would go into the preview's command line.
+                    String mistle = view.getText("mistle");
+                    tree.mistle = "mistle".equals(mistle) || "drymistle".equals(mistle) ? mistle : NONE;
+                    tree.strength = percent(view.getFloat("strength"), TreePaster.MISTLE_STRENGTH);
                     marker(who, markerIndex, tree.colours == null
                             && (tree.bright || tree.out || tree.secondary != 0 || tree.blossom != 0)
                             ? "Bright, the outward fade, the secondary colour and blossoms only go with a leaf colour."
@@ -446,11 +478,13 @@ final class PreviewMenu {
                     String name = written.substring(at + 1);
                     PreviewLibrary.Shelf shelf = at < 0 ? PreviewLibrary.Shelf.of(who.getUniqueId())
                             : PreviewLibrary.Shelf.namespace(written.substring(0, at));
-                    if (!name.matches("[a-z0-9_-]+") || ArchiveCommand.PRESET_WORDS.contains(name)
-                            || shelf.namespace() != null && !shelf.namespace().matches("[a-z0-9_-]+")) {
+                    if (!name.matches(NAME) || ArchiveCommand.PRESET_WORDS.contains(name)
+                            || shelf.namespace() != null && !shelf.namespace().matches(NAME)) {
                         saveAs(who, "That name will not do.");
                     } else if (!canChange(who, shelf)) {
                         saveAs(who, "Only mods and admins change namespaces.");
+                    } else if (library.preset(shelf, name) == null && library.presets(shelf).size() >= MAX_KEPT) {
+                        saveAs(who, MAX_KEPT + " presets are the most in one place; delete one first.");
                     } else {
                         save(who, draft, shelf, name);
                     }
@@ -458,6 +492,10 @@ final class PreviewMenu {
     }
 
     private void save(Player player, Draft draft, PreviewLibrary.Shelf shelf, String name) {
+        if (!canChange(player, shelf)) {
+            editor(player, "Only mods and admins change namespaces.");
+            return;
+        }
         library.set(shelf, player, name, parts(draft));
         draft.shelf = shelf;
         draft.name = name;
@@ -508,11 +546,20 @@ final class PreviewMenu {
         List<ActionButton> buttons = new ArrayList<>();
         buttons.add(button("Save", "Keeps the colour; save again to see it", (view, who) -> {
             String newName = Objects.requireNonNullElse(view.getText("name"), "").trim().toLowerCase(Locale.ROOT);
-            if (!newName.matches("[a-z0-9_-]+")) {
-                colour(who, name, "Name it with letters, digits, _ and -.");
+            Map<String, String> own = library.colours(who.getUniqueId());
+            if (!newName.matches(NAME)) {
+                colour(who, name, "Name it with up to 32 letters, digits, _ and -.");
                 return;
             }
-            int count = Integer.parseInt(Objects.requireNonNullElse(view.getText("count"), "1"));
+            if (!own.containsKey(newName) && own.size() >= MAX_KEPT) {
+                colour(who, name, MAX_KEPT + " colours are the most; delete one first.");
+                return;
+            }
+            int count = switch (Objects.requireNonNullElse(view.getText("count"), "1")) {
+                case "2" -> 2;
+                case "3" -> 3;
+                default -> 1;
+            };
             int[] made = new int[count];
             for (int stop = 0; stop < count; stop++) {
                 for (int channel = 0; channel < 3; channel++) {
@@ -546,6 +593,31 @@ final class PreviewMenu {
                 .type(DialogType.confirmation(button("Yes", null, who -> yes.run()), button("No", null, who -> no.run())))));
     }
 
+    /**
+     * Shows a preview, its parts checked once more on their way to /ta preview's command
+     * line: a flag as presets have them, or a block's part that reads as one and holds no
+     * space - nothing that could slip in a --seed, an --at or a word of /ta preview's own.
+     */
+    private void show(Player player, List<String> parts) {
+        for (String part : parts) {
+            if (!fits(part)) {
+                player.sendMessage(Component.text("That preview cannot be shown: " + part, NamedTextColor.RED));
+                return;
+            }
+        }
+        show.accept(player, parts);
+    }
+
+    /** Whether a part may go to /ta preview: see {@link #show(Player, List)}. */
+    static boolean fits(String part) {
+        try {
+            return PreviewLibrary.isFlag(part) ? part.matches("--continuous|--bypassterrain|--limit [1-9][0-9]{0,5}")
+                    : !part.contains(" ") && !part.startsWith("#") && !PreviewSpec.parse(part).parts().isEmpty();
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
     // ---- drafts and presets ---------------------------------------------------------
 
     /** Reads the draft's flags from the inputs of its screen, so leaving it keeps them. */
@@ -557,7 +629,14 @@ final class PreviewMenu {
     }
 
     private static String blocks(DialogResponseView view) {
-        return Objects.requireNonNullElse(view.getText("blocks"), "").toLowerCase(Locale.ROOT).replaceAll("[\\s:/]", "");
+        String blocks = Objects.requireNonNullElse(view.getText("blocks"), "").toLowerCase(Locale.ROOT)
+                .replaceAll("[\\s:/]", "");
+        return blocks.substring(0, Math.min(blocks.length(), 200));
+    }
+
+    /** A slider's value as a whole percent, 1 to 100 whatever the client sent. */
+    private static int percent(@Nullable Float value, int fallback) {
+        return value == null || value.isNaN() ? fallback : Math.clamp(Math.round(value), 1, 100);
     }
 
     /** A preset's parts as a draft. */

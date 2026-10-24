@@ -70,7 +70,7 @@ record TreeSelection(List<Part> parts, Field field) {
     static int strength(String modifier, int fallback) {
         int equals = modifier.indexOf('=');
         try {
-            return equals < 0 ? fallback : Integer.parseInt(modifier.substring(equals + 1));
+            return equals < 0 ? fallback : Math.clamp(Integer.parseInt(modifier.substring(equals + 1)), 1, 100);
         } catch (NumberFormatException e) {
             return fallback;
         }

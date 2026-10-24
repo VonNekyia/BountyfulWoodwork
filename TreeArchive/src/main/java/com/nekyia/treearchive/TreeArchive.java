@@ -21,6 +21,9 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -85,6 +88,11 @@ final class TreeArchive {
     private List<Entry> entries = List.of();
     /** Blueprints read so far, so placing a tree does not read its file every time. */
     private final Map<String, Clipboard> cache = new HashMap<>();
+    /**
+     * The trees whose leaves were made persistent, in persistent-leaves.yml - under a new
+     * key since the first check, which made only one leaf of each state persistent.
+     */
+    private static final String CHECKED = "checked-2";
 
     TreeArchive(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -234,7 +242,7 @@ final class TreeArchive {
      * saying so in the log.
      */
     private void checkLeaves() {
-        Set<String> checked = new TreeSet<>(YamlConfiguration.loadConfiguration(checkedFile()).getStringList("checked"));
+        Set<String> checked = new TreeSet<>(YamlConfiguration.loadConfiguration(checkedFile()).getStringList(CHECKED));
         int before = checked.size();
         int trees = 0;
         int leaves = 0;
@@ -277,7 +285,7 @@ final class TreeArchive {
 
     private void saveChecked(Set<String> checked) {
         YamlConfiguration file = new YamlConfiguration();
-        file.set("checked", List.copyOf(checked));
+        file.set(CHECKED, List.copyOf(checked));
         try {
             file.save(checkedFile());
         } catch (IOException e) {
@@ -306,11 +314,14 @@ final class TreeArchive {
         return persisted;
     }
 
+    /** Writes a blueprint whole or not at all: beside it first, then in its place. */
     private static void write(Clipboard clipboard, File schematic) throws IOException {
+        Path written = schematic.toPath().resolveSibling(schematic.getName() + ".writing");
         try (ClipboardWriter writer = BuiltInClipboardFormat.SPONGE_V3_SCHEMATIC
-                .getWriter(new FileOutputStream(schematic))) {
+                .getWriter(new FileOutputStream(written.toFile()))) {
             writer.write(clipboard);
         }
+        Files.move(written, schematic.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
     }
 
     List<Entry> entries() {
@@ -352,6 +363,8 @@ final class TreeArchive {
      */
     Entry refile(Entry entry, String type, Category category, Creator creator) throws IOException {
         String id = freeId(baseId(type, category, creator));
+        // A tree archived later under the old name must not get this blueprint from the cache.
+        release(cache.remove(entry.id()));
         File schematic = new File(folder(), id + ".schem");
         if (!entry.schematic().renameTo(schematic)) {
             throw new IOException("could not rename " + entry.schematic().getName());
@@ -490,7 +503,7 @@ final class TreeArchive {
             }
             updated.add(entry);
             entries = List.copyOf(updated);
-            Set<String> checked = new TreeSet<>(YamlConfiguration.loadConfiguration(checkedFile()).getStringList("checked"));
+            Set<String> checked = new TreeSet<>(YamlConfiguration.loadConfiguration(checkedFile()).getStringList(CHECKED));
             if (checked.add(id)) {
                 saveChecked(checked);
             }

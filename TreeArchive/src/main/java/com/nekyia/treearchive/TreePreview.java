@@ -559,8 +559,10 @@ final class TreePreview implements Listener {
         // Wood takes its marker away for real, for whoever hits it - this is a building server.
         if (owner != null && !TreePaster.foliage(ghost.getMaterial())) {
             Block marker = block.getWorld().getBlockAt(BlockKeys.x(owner), BlockKeys.y(owner), BlockKeys.z(owner));
-            if (session.spec.markers().contains(marker.getType())) {
-                marker.setType(Material.AIR);
+            // Broken as the player would break it, so protections have their say: anyone may
+            // choose the markers, and a marker may stand in someone else's build.
+            if (session.spec.markers().contains(marker.getType()) && !player.breakBlock(marker)) {
+                return;
             }
             markerRemoved(marker);
             return;

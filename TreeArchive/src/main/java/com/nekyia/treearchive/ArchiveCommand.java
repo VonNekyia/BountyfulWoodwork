@@ -774,6 +774,10 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
         TreePreview.Options options = new TreePreview.Options(continuous, limit, bypassTerrain);
         preview.show(player, text.toString(), spec, seed, world, x, z, options);
         // A short name to keep it by and share it with: spec and flags, without seed and place.
+        // Only admins make hashes; anyone else would fill hashes.yml one preview at a time.
+        if (!player.hasPermission(TreeBrush.PERMISSION)) {
+            return;
+        }
         String kept = "/ta preview #" + library.hash(text + options.written());
         player.sendMessage(Component.text("Also as " + kept + " ", NamedTextColor.GRAY)
                 .append(Component.text("[copy]", NamedTextColor.AQUA)
