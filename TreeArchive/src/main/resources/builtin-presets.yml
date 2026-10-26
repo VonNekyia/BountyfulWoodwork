@@ -1,0 +1,49 @@
+# Presets TreeArchive brings along, in namespaces everyone may use. Their marker blocks:
+#   gold_block     broadleaf trees - beech, maple, oak
+#   diamond_block  conifers - spruce, fir, pine, and larch, which turns golden in autumn
+#   emerald_block  birches
+# A namespace preset of the same name in namespaces.yml goes first; taking it away there
+# brings this one back. Leaf textures are a mid grey and a colour only darkens them, so
+# light colours and white go with &bright. Blossoms, &blossom=#..., on &bloom percent of
+# the leaves, and the secondary colour, &second=#..., show with ColorfulLeaves 1.1.
+jahreszeiten:
+  fruehling:
+  - "gold_block:beech*#9ccc65&bright&blossom=#fff1f5&bloom=25,maple*#aed581&bright&blossom=#ffd1dc&bloom=35,oak*#8bc34a&blossom=#ffffff&bloom=15"
+  - "diamond_block:norway_spruce*#3d6b35>#8bc34a&bright,silver_fir*#3b6b40>#9ccc65&bright,white_pine*#4f7f3a>#a5d66b&bright,larch*#b5d96b&bright"
+  - "emerald_block:birch*#c5e1a5&bright&blossom=#fff59d&bloom=20"
+  sommer:
+  - "gold_block:beech*#3e7d32&second=#5a9a3c,maple*#2e7d32&second=#4caf50,oak*#33691e&second=#558b2f"
+  - "diamond_block:norway_spruce*#1f4d2b,silver_fir*#24502e,white_fir*#2f5d3a,norway_pine*#2b5a2f,larch*#5f8f3a"
+  - "emerald_block:birch*#7cb342&bright&second=#9ccc65"
+  herbst:
+  - "gold_block:beech*#f5d130>#c0392b&bright&second=#e67e22,maple*#c0392b>#e74c3c&bright&second=#f39c12,oak*#8d6e3f>#c87f2d&second=#a0522d"
+  - "diamond_block:norway_spruce*#2e4a2b,silver_fir*#2f4d33,norway_pine*#3a5530,larch*#f4b942&bright&second=#e0a030"
+  - "emerald_block:birch*#f7dc6f&bright&second=#f4d03f"
+  winter:
+  - "gold_block:beech*#a1887f&second=#8d6e63&drymistle=10,oak*#8d7b68&drymistle=15,maple*#9e8a7a&second=#7d6b5d"
+  - "diamond_block:norway_spruce*#2f4f3f&blossom=#ffffff&bloom=45,silver_fir*#35524a&blossom=#f4f9ff&bloom=50,white_fir*#5c7a72&bright&blossom=#ffffff&bloom=40,norway_pine*#3a5446&blossom=#ffffff&bloom=35"
+  - "emerald_block:birch*#d7ccc8&bright&blossom=#ffffff&bloom=30"
+  kirschbluete:
+  - "gold_block:maple*#7cb342&blossom=#ffb7c5&bloom=60,beech*#8bc34a&bright&blossom=#ffc1d6&bloom=55,oak*#689f38&blossom=#fce4ec&bloom=40"
+  - "diamond_block:norway_spruce*#2e5e34,silver_fir*#356b3c,larch*#9ccc65&bright"
+  - "emerald_block:birch*#aed581&bright&blossom=#ffffff&bloom=40"
+  indian_summer:
+  - "gold_block:maple*#d50000>#ff6d00&bright,beech*#ff6f00>#ffd600&bright,oak*#bf360c>#e65100&second=#ffab00"
+  - "diamond_block:norway_spruce*#1f4d2b,silver_fir*#24502e,larch*#ffb300&bright"
+  - "emerald_block:birch*#ffd600&bright&second=#ffab00"
+  spaetherbst:
+  - "gold_block:beech*#795548>#a1887f&second=#6d4c41&drymistle=12,oak*#6d4c41&second=#5d4037&drymistle,maple*#8d3b2a>#a0522d&second=#6d4c41"
+  - "diamond_block:norway_spruce*#2a3f2c,silver_fir*#2c4430,larch*#b5803a&second=#8d6e3f"
+  - "emerald_block:birch*#c9a227&second=#8d6e63&drymistle=10"
+  raureif:
+  - "gold_block:beech*#e3f2fd&bright&second=#bbdefb,oak*#eceff1&bright&second=#cfd8dc,maple*#e1f5fe&bright&blossom=#ffffff&bloom=30"
+  - "diamond_block:norway_spruce*#cfd8dc&bright&blossom=#ffffff&bloom=40,silver_fir*#b0c4cc&bright&blossom=#ffffff&bloom=45,white_fir*#e0f2f1&bright&blossom=#ffffff&bloom=40"
+  - "emerald_block:birch*#ffffff&bright&second=#e3f2fd"
+  maerchenwald:
+  - "gold_block:maple*#7e57c2>#42a5f5&bright&out&blossom=#f8bbd0&bloom=30,beech*#26a69a>#7e57c2&bright&out,oak*#5c6bc0>#ab47bc&bright&blossom=#fff59d&bloom=20"
+  - "diamond_block:norway_spruce*#283593>#00897b&bright,silver_fir*#1a237e>#26a69a&bright,larch*#ce93d8&bright"
+  - "emerald_block:birch*#b39ddb&bright&blossom=#e1f5fe&bloom=35"
+  mistelwald:
+  - "gold_block:oak&mistle=25,beech&mistle=20,maple&mistle=15"
+  - "diamond_block:norway_spruce,silver_fir"
+  - "emerald_block:birch&mistle=35"

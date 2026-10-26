@@ -2,15 +2,19 @@ package com.nekyia.treearchive;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
@@ -24,7 +28,9 @@ import org.jspecify.annotations.Nullable;
  * need to be - on each player's own shelf, theirs alone to change, or in namespaces
  * everyone shares - and hashes: short names for preview commands, for links that would
  * not fit into a chat line, and for keeping. Each player also keeps colours by name, to
- * paint trees with in the preview menu.
+ * paint trees with in the preview menu. Some namespaces come with the plugin, from
+ * builtin-presets.yml: a preset of the same name in namespaces.yml goes first, and taking
+ * that away brings the plugin's back.
  */
 final class PreviewLibrary {
 
@@ -52,6 +58,8 @@ final class PreviewLibrary {
     private final YamlConfiguration hashes;
     /** Player uuid -> colour name -> its colours, as a tree is painted: #f5d130>#c0392b. */
     private final YamlConfiguration colours;
+    /** Namespace -> name -> parts, as the plugin brings them. */
+    private final YamlConfiguration builtIn;
 
     PreviewLibrary(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -63,6 +71,13 @@ final class PreviewLibrary {
         namespaces = YamlConfiguration.loadConfiguration(namespacesFile);
         hashes = YamlConfiguration.loadConfiguration(hashesFile);
         colours = YamlConfiguration.loadConfiguration(coloursFile);
+        builtIn = YamlConfiguration.loadConfiguration(new InputStreamReader(
+                Objects.requireNonNull(plugin.getResource("builtin-presets.yml")), StandardCharsets.UTF_8));
+    }
+
+    /** Whether the plugin brings a preset of this name along. */
+    boolean builtIn(Shelf shelf, String name) {
+        return shelf.namespace() != null && builtIn.isList(shelf.namespace() + "." + name);
     }
 
     /** A player's colours, name -> colours as written behind a tree's *, in the order they were made. */
@@ -87,7 +102,7 @@ final class PreviewLibrary {
             presets.set(shelf.player() + ".name", editor.getName());
         }
         yaml(shelf).set(path(shelf) + "." + name, parts.isEmpty() ? null : parts);
-        if (shelf.namespace() != null && presets(shelf).isEmpty()) {
+        if (shelf.namespace() != null && kept(shelf).isEmpty()) {
             namespaces.set(shelf.namespace(), null);
         }
         save(shelf);
@@ -109,10 +124,23 @@ final class PreviewLibrary {
     }
 
     Set<String> namespaces() {
-        return namespaces.getKeys(false);
+        Set<String> all = new TreeSet<>(builtIn.getKeys(false));
+        all.addAll(namespaces.getKeys(false));
+        return all;
     }
 
+    /** A shelf's presets: those kept in its file, and in a namespace those the plugin brings. */
     Set<String> presets(Shelf shelf) {
+        Set<String> names = new LinkedHashSet<>(kept(shelf));
+        ConfigurationSection brought = shelf.namespace() == null ? null : builtIn.getConfigurationSection(shelf.namespace());
+        if (brought != null) {
+            names.addAll(brought.getKeys(false));
+        }
+        return names;
+    }
+
+    /** The presets a shelf keeps in its file. */
+    private Set<String> kept(Shelf shelf) {
         ConfigurationSection section = yaml(shelf).getConfigurationSection(path(shelf));
         return section == null ? Set.of() : section.getKeys(false);
     }
@@ -120,7 +148,10 @@ final class PreviewLibrary {
     /** A preset's parts - one for each block or group of blocks, and flags - or null when there is none. */
     @Nullable List<String> preset(Shelf shelf, String name) {
         String path = path(shelf) + "." + name;
-        return yaml(shelf).contains(path) ? yaml(shelf).getStringList(path) : null;
+        if (yaml(shelf).contains(path)) {
+            return yaml(shelf).getStringList(path);
+        }
+        return builtIn(shelf, name) ? builtIn.getStringList(shelf.namespace() + "." + name) : null;
     }
 
     /**
@@ -129,7 +160,8 @@ final class PreviewLibrary {
      */
     void add(Shelf shelf, Player editor, String name, String part) {
         String path = path(shelf) + "." + name;
-        List<String> parts = new ArrayList<>(yaml(shelf).getStringList(path));
+        // A preset the plugin brings is changed from what it brings.
+        List<String> parts = new ArrayList<>(Objects.requireNonNullElse(preset(shelf, name), List.of()));
         parts.removeIf(old -> same(old, part));
         parts.add(part);
         if (shelf.player() != null) {
@@ -161,7 +193,7 @@ final class PreviewLibrary {
             yaml.set(path, parts.isEmpty() ? null : parts);
         }
         // A namespace without presets is gone.
-        if (shelf.namespace() != null && presets(shelf).isEmpty()) {
+        if (shelf.namespace() != null && kept(shelf).isEmpty()) {
             namespaces.set(shelf.namespace(), null);
         }
         save(shelf);

@@ -214,14 +214,16 @@ final class PreviewMenu implements Listener {
                 drafts.put(who.getUniqueId(), draft(shelf, name, parts));
                 editor(who, null);
             }));
-            buttons.add(button("Delete", null, who -> confirm(who, "Delete the preset " + name + "?", () -> {
-                if (!canChange(who, shelf)) {
-                    presets(who, shelf, "Only mods and admins change namespaces.");
-                    return;
-                }
-                library.set(shelf, who, name, List.of());
-                presets(who, shelf, "Deleted " + name + ".");
-            }, () -> preset(who, shelf, name, null))));
+            boolean brought = library.builtIn(shelf, name);
+            buttons.add(button(brought ? "Reset" : "Delete", brought ? "Back to how TreeArchive brings it" : null,
+                    who -> confirm(who, (brought ? "Reset the preset " : "Delete the preset ") + name + "?", () -> {
+                        if (!canChange(who, shelf)) {
+                            presets(who, shelf, "Only mods and admins change namespaces.");
+                            return;
+                        }
+                        library.set(shelf, who, name, List.of());
+                        presets(who, shelf, (brought ? "Reset " : "Deleted ") + name + ".");
+                    }, () -> preset(who, shelf, name, null))));
         }
         if (!shelf.equals(PreviewLibrary.Shelf.of(player.getUniqueId()))) {
             buttons.add(button("Copy to mine", "A draft of your own to change and keep", who -> {
