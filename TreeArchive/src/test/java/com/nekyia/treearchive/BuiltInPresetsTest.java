@@ -15,10 +15,12 @@ import org.junit.jupiter.api.Test;
 class BuiltInPresetsTest {
 
     /** The marker blocks the presets use, as their file says - and blocks they are, checked in game. */
-    private static final Set<String> MARKERS = Set.of("gold_block", "diamond_block", "emerald_block");
+    private static final Set<String> MARKERS = Set.of("gold_block", "diamond_block", "emerald_block", "redstone_block",
+            "netherite_block");
     /** Tree types of the build server's archive, types.yml; a word naming none would quietly grow nothing. */
     private static final Set<String> TYPES = Set.of("beech", "maple", "oak", "birch", "larch", "norway_spruce",
-            "silver_fir", "white_fir", "norway_pine", "white_pine");
+            "silver_fir", "white_fir", "norway_pine", "white_pine", "persimmon", "fever_tree", "dark_oak", "pale_oak",
+            "windswept_spruce");
 
     @Test
     void everyPresetReads() {
@@ -35,6 +37,9 @@ class BuiltInPresetsTest {
                     TreeSelection trees = TreeSelection.parse(part.substring(colon + 1));
                     assertFalse(trees.parts().isEmpty(), where);
                     trees.parts().forEach(tree -> assertTrue(TYPES.contains(tree.word()), where + " - " + tree.word()));
+                    // Shares for some trees and none for others leaves the others a share of 1 - next to nothing.
+                    assertTrue(trees.parts().stream().allMatch(tree -> tree.weight() == 1)
+                            || trees.parts().stream().allMatch(tree -> tree.weight() > 1), where + " - shares for all or none");
                     assertDoesNotThrow(() -> PreviewSpec.check(trees), where);
                 }
             }

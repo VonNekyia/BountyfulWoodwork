@@ -1,49 +1,151 @@
 # Presets TreeArchive brings along, in namespaces everyone may use. Their marker blocks:
-#   gold_block     broadleaf trees - beech, maple, oak
-#   diamond_block  conifers - spruce, fir, pine, and larch, which turns golden in autumn
-#   emerald_block  birches
+#   gold_block       broadleaf trees - beech, maple, oak
+#   diamond_block    conifers - spruce, fir, pine, and larch, which turns golden in autumn
+#   emerald_block    birches
+#   redstone_block   fruit and accent trees - persimmon, fever tree
+#   netherite_block  dark and old trees - dark oak, pale oak, windswept spruce
+# One tree may stand on a block twice, painted two ways, half the trees each.
 # A namespace preset of the same name in namespaces.yml goes first; taking it away there
 # brings this one back. Leaf textures are a mid grey and a colour only darkens them, so
-# light colours and white go with &bright. Blossoms, &blossom=#..., on &bloom percent of
-# the leaves, and the secondary colour, &second=#..., show with ColorfulLeaves 1.1.
+# light colours go with &bright. Blossoms, &blossom=#..., on &bloom percent of the leaves,
+# and the secondary colour, &second=#..., show with ColorfulLeaves 1.1.
 jahreszeiten:
   fruehling:
   - "gold_block:beech*#9ccc65&bright&blossom=#fff1f5&bloom=25,maple*#aed581&bright&blossom=#ffd1dc&bloom=35,oak*#8bc34a&blossom=#ffffff&bloom=15"
   - "diamond_block:norway_spruce*#3d6b35>#8bc34a&bright,silver_fir*#3b6b40>#9ccc65&bright,white_pine*#4f7f3a>#a5d66b&bright,larch*#b5d96b&bright"
   - "emerald_block:birch*#c5e1a5&bright&blossom=#fff59d&bloom=20"
+  - "redstone_block:persimmon*#9ccc65&bright&blossom=#ffffff&bloom=50,fever_tree*#c0ca33&bright&blossom=#fff9c4&bloom=30"
+  - "netherite_block:dark_oak*#558b2f&second=#7cb342,pale_oak*#a5c48a&bright&blossom=#f8bbd0&bloom=20"
   sommer:
   - "gold_block:beech*#3e7d32&second=#5a9a3c,maple*#2e7d32&second=#4caf50,oak*#33691e&second=#558b2f"
   - "diamond_block:norway_spruce*#1f4d2b,silver_fir*#24502e,white_fir*#2f5d3a,norway_pine*#2b5a2f,larch*#5f8f3a"
   - "emerald_block:birch*#7cb342&bright&second=#9ccc65"
+  - "redstone_block:persimmon*#33691e&second=#689f38&blossom=#ff9800&bloom=15,fever_tree*#827717&bright&second=#9e9d24"
+  - "netherite_block:dark_oak*#1b5e20&second=#2e7d32,pale_oak*#7a8f6a&second=#93a87f,windswept_spruce*#24452c"
   herbst:
-  - "gold_block:beech*#f5d130>#c0392b&bright&second=#e67e22,maple*#c0392b>#e74c3c&bright&second=#f39c12,oak*#8d6e3f>#c87f2d&second=#a0522d"
+  - "gold_block:25%maple*#c0392b>#e74c3c&bright&second=#f39c12,25%maple*#f5d130>#e67e22&bright&second=#c0392b,25%beech*#f5d130>#c0392b&bright&second=#e67e22,25%oak*#8d6e3f>#c87f2d&second=#a0522d"
   - "diamond_block:norway_spruce*#2e4a2b,silver_fir*#2f4d33,norway_pine*#3a5530,larch*#f4b942&bright&second=#e0a030"
   - "emerald_block:birch*#f7dc6f&bright&second=#f4d03f"
+  - "redstone_block:persimmon*#d35400>#f39c12&bright&blossom=#e65100&bloom=25,fever_tree*#e6b422&bright&second=#c0392b"
+  - "netherite_block:dark_oak*#6d3b1f>#a0522d&second=#8d6e3f,pale_oak*#b08968&bright&second=#8d6e63,windswept_spruce*#2e4a2b"
   winter:
   - "gold_block:beech*#a1887f&second=#8d6e63&drymistle=10,oak*#8d7b68&drymistle=15,maple*#9e8a7a&second=#7d6b5d"
   - "diamond_block:norway_spruce*#2f4f3f&blossom=#ffffff&bloom=45,silver_fir*#35524a&blossom=#f4f9ff&bloom=50,white_fir*#5c7a72&bright&blossom=#ffffff&bloom=40,norway_pine*#3a5446&blossom=#ffffff&bloom=35"
   - "emerald_block:birch*#d7ccc8&bright&blossom=#ffffff&bloom=30"
+  - "redstone_block:persimmon*#8d6e63&blossom=#ff7043&bloom=20,fever_tree*#bcaaa4&bright&blossom=#ffffff&bloom=30"
+  - "netherite_block:dark_oak*#3e3a36&blossom=#ffffff&bloom=35,pale_oak*#cfd8dc&bright&blossom=#ffffff&bloom=40,windswept_spruce*#2f4f3f&blossom=#ffffff&bloom=50"
   kirschbluete:
   - "gold_block:maple*#7cb342&blossom=#ffb7c5&bloom=60,beech*#8bc34a&bright&blossom=#ffc1d6&bloom=55,oak*#689f38&blossom=#fce4ec&bloom=40"
   - "diamond_block:norway_spruce*#2e5e34,silver_fir*#356b3c,larch*#9ccc65&bright"
   - "emerald_block:birch*#aed581&bright&blossom=#ffffff&bloom=40"
+  - "redstone_block:35%persimmon*#f8bbd0&bright&blossom=#ffffff&bloom=70,35%persimmon*#ffffff&bright&blossom=#f48fb1&bloom=60,30%fever_tree*#c5e1a5&bright&blossom=#ffb7c5&bloom=50"
+  - "netherite_block:dark_oak*#4e6b3a&blossom=#f8bbd0&bloom=45,pale_oak*#fce4ec&bright&blossom=#ffffff&bloom=60"
   indian_summer:
   - "gold_block:maple*#d50000>#ff6d00&bright,beech*#ff6f00>#ffd600&bright,oak*#bf360c>#e65100&second=#ffab00"
   - "diamond_block:norway_spruce*#1f4d2b,silver_fir*#24502e,larch*#ffb300&bright"
   - "emerald_block:birch*#ffd600&bright&second=#ffab00"
+  - "redstone_block:persimmon*#ff3d00>#ffab00&bright&blossom=#ff6d00&bloom=30,fever_tree*#ffc400&bright&second=#ff6d00"
+  - "netherite_block:dark_oak*#8e2a0e>#d84315&second=#bf360c,pale_oak*#ffab91&bright&second=#ff7043"
   spaetherbst:
   - "gold_block:beech*#795548>#a1887f&second=#6d4c41&drymistle=12,oak*#6d4c41&second=#5d4037&drymistle,maple*#8d3b2a>#a0522d&second=#6d4c41"
   - "diamond_block:norway_spruce*#2a3f2c,silver_fir*#2c4430,larch*#b5803a&second=#8d6e3f"
   - "emerald_block:birch*#c9a227&second=#8d6e63&drymistle=10"
+  - "redstone_block:persimmon*#6d4c41&blossom=#e65100&bloom=30,fever_tree*#a1887f&second=#795548&drymistle=15"
+  - "netherite_block:dark_oak*#4e342e&second=#3e2723&drymistle=20,pale_oak*#9e8b7a&drymistle=15,windswept_spruce*#2a3f2c"
   raureif:
   - "gold_block:beech*#e3f2fd&bright&second=#bbdefb,oak*#eceff1&bright&second=#cfd8dc,maple*#e1f5fe&bright&blossom=#ffffff&bloom=30"
   - "diamond_block:norway_spruce*#cfd8dc&bright&blossom=#ffffff&bloom=40,silver_fir*#b0c4cc&bright&blossom=#ffffff&bloom=45,white_fir*#e0f2f1&bright&blossom=#ffffff&bloom=40"
   - "emerald_block:birch*#ffffff&bright&second=#e3f2fd"
+  - "redstone_block:persimmon*#eceff1&bright&blossom=#ffccbc&bloom=20,fever_tree*#e0f7fa&bright&blossom=#ffffff&bloom=35"
+  - "netherite_block:dark_oak*#90a4ae&bright&blossom=#ffffff&bloom=40,pale_oak*#f5f5f5&bright&second=#e0e0e0,windswept_spruce*#b0bec5&bright&blossom=#ffffff&bloom=50"
   maerchenwald:
   - "gold_block:maple*#7e57c2>#42a5f5&bright&out&blossom=#f8bbd0&bloom=30,beech*#26a69a>#7e57c2&bright&out,oak*#5c6bc0>#ab47bc&bright&blossom=#fff59d&bloom=20"
   - "diamond_block:norway_spruce*#283593>#00897b&bright,silver_fir*#1a237e>#26a69a&bright,larch*#ce93d8&bright"
   - "emerald_block:birch*#b39ddb&bright&blossom=#e1f5fe&bloom=35"
+  - "redstone_block:persimmon*#ec407a>#ffca28&bright&blossom=#ffffff&bloom=40,fever_tree*#4dd0e1>#ba68c8&bright&out"
+  - "netherite_block:dark_oak*#311b92>#6a1b9a&bright&second=#4527a0,pale_oak*#e1bee7&bright&blossom=#b2ebf2&bloom=30"
   mistelwald:
   - "gold_block:oak&mistle=25,beech&mistle=20,maple&mistle=15"
   - "diamond_block:norway_spruce,silver_fir"
   - "emerald_block:birch&mistle=35"
+  - "redstone_block:persimmon&mistle=20,fever_tree&drymistle=20"
+  - "netherite_block:dark_oak&mistle=30,pale_oak&drymistle=25"
+fantasy:
+  verzaubert:
+  - "gold_block:25%maple*#315d88>#6c8fe8>#b5c8ff&bright&second=#b5c8ff&blossom=#ffffff&bloom=20,25%maple*#6c8fe8>#b5c8ff&bright&out,25%beech*#315d88>#b5c8ff&bright&second=#6c8fe8,25%oak*#315d88>#6c8fe8&bright"
+  - "diamond_block:norway_spruce*#315d88>#6c8fe8&bright,silver_fir*#315d88>#b5c8ff&bright&out,white_pine*#315d88>#6c8fe8&bright&blossom=#ffffff&bloom=20,larch*#6c8fe8>#b5c8ff&bright"
+  - "emerald_block:birch*#b5c8ff&bright&second=#6c8fe8&blossom=#ffffff&bloom=20"
+  - "redstone_block:35%persimmon*#6c8fe8>#b5c8ff&bright&blossom=#b5c8ff&bloom=40,35%persimmon*#315d88>#6c8fe8&bright&out,30%fever_tree*#6c8fe8&bright&second=#b5c8ff"
+  - "netherite_block:dark_oak*#315d88&bright&second=#6c8fe8&blossom=#ffffff&bloom=20,pale_oak*#315d88>#6c8fe8&bright&out,windswept_spruce*#315d88>#6c8fe8&bright"
+  kristallwald:
+  - "gold_block:25%maple*#247c91>#64c9dc>#c2f5fa&bright&second=#c2f5fa&blossom=#ffffff&bloom=15,25%maple*#64c9dc>#c2f5fa&bright&out,25%beech*#247c91>#c2f5fa&bright&second=#64c9dc,25%oak*#247c91>#64c9dc&bright"
+  - "diamond_block:norway_spruce*#247c91>#64c9dc&bright,silver_fir*#247c91>#c2f5fa&bright&out,white_pine*#247c91>#64c9dc&bright&blossom=#ffffff&bloom=15,larch*#64c9dc>#c2f5fa&bright"
+  - "emerald_block:birch*#c2f5fa&bright&second=#64c9dc&blossom=#ffffff&bloom=15"
+  - "redstone_block:35%persimmon*#64c9dc>#c2f5fa&bright&blossom=#c2f5fa&bloom=40,35%persimmon*#247c91>#64c9dc&bright&out,30%fever_tree*#64c9dc&bright&second=#c2f5fa"
+  - "netherite_block:dark_oak*#247c91&bright&second=#64c9dc&blossom=#ffffff&bloom=15,pale_oak*#247c91>#64c9dc&bright&out,windswept_spruce*#247c91>#64c9dc&bright"
+  pilzwald:
+  - "gold_block:25%maple*#713d5a>#bb7396>#e7adc8&bright&second=#e7adc8&mistle=20,25%maple*#bb7396>#e7adc8&bright&out,25%beech*#713d5a>#e7adc8&bright&second=#bb7396,25%oak*#713d5a>#bb7396&bright"
+  - "diamond_block:norway_spruce*#713d5a>#bb7396&bright,silver_fir*#713d5a>#e7adc8&bright&out,white_pine*#713d5a>#bb7396&bright&mistle=20,larch*#bb7396>#e7adc8&bright"
+  - "emerald_block:birch*#e7adc8&bright&second=#bb7396&mistle=20"
+  - "redstone_block:35%persimmon*#bb7396>#e7adc8&bright&blossom=#e7adc8&bloom=40,35%persimmon*#713d5a>#bb7396&bright&out,30%fever_tree*#bb7396&bright&second=#e7adc8"
+  - "netherite_block:dark_oak*#713d5a&bright&second=#bb7396&mistle=20,pale_oak*#713d5a>#bb7396&bright&out,windswept_spruce*#713d5a>#bb7396&bright"
+  verdorben:
+  - "gold_block:25%maple*#373b2a>#738147>#bbc56d&bright&second=#bbc56d&drymistle=25,25%maple*#738147>#bbc56d&bright&out,25%beech*#373b2a>#bbc56d&bright&second=#738147,25%oak*#373b2a>#738147&bright"
+  - "diamond_block:norway_spruce*#373b2a>#738147&bright,silver_fir*#373b2a>#bbc56d&bright&out,white_pine*#373b2a>#738147&bright&drymistle=25,larch*#738147>#bbc56d&bright"
+  - "emerald_block:birch*#bbc56d&bright&second=#738147&drymistle=25"
+  - "redstone_block:35%persimmon*#738147>#bbc56d&bright&blossom=#bbc56d&bloom=40,35%persimmon*#373b2a>#738147&bright&out,30%fever_tree*#738147&bright&second=#bbc56d"
+  - "netherite_block:dark_oak*#373b2a&bright&second=#738147&drymistle=25,pale_oak*#373b2a>#738147&bright&out,windswept_spruce*#373b2a>#738147&bright"
+  radioaktiv:
+  - "gold_block:25%maple*#27622d>#70d82e>#c6ff48&bright&second=#c6ff48&blossom=#c6ff48&bloom=35,25%maple*#70d82e>#c6ff48&bright&out,25%beech*#27622d>#c6ff48&bright&second=#70d82e,25%oak*#27622d>#70d82e&bright"
+  - "diamond_block:norway_spruce*#27622d>#70d82e&bright,silver_fir*#27622d>#c6ff48&bright&out,white_pine*#27622d>#70d82e&bright&blossom=#c6ff48&bloom=35,larch*#70d82e>#c6ff48&bright"
+  - "emerald_block:birch*#c6ff48&bright&second=#70d82e&blossom=#c6ff48&bloom=35"
+  - "redstone_block:35%persimmon*#70d82e>#c6ff48&bright&blossom=#c6ff48&bloom=40,35%persimmon*#27622d>#70d82e&bright&out,30%fever_tree*#70d82e&bright&second=#c6ff48"
+  - "netherite_block:dark_oak*#27622d&bright&second=#70d82e&blossom=#c6ff48&bloom=35,pale_oak*#27622d>#70d82e&bright&out,windswept_spruce*#27622d>#70d82e&bright"
+  sternenwald:
+  - "gold_block:25%maple*#202955>#5355a6>#a8a5ec&bright&second=#a8a5ec&blossom=#ffffff&bloom=12,25%maple*#5355a6>#a8a5ec&bright&out,25%beech*#202955>#a8a5ec&bright&second=#5355a6,25%oak*#202955>#5355a6&bright"
+  - "diamond_block:norway_spruce*#202955>#5355a6&bright,silver_fir*#202955>#a8a5ec&bright&out,white_pine*#202955>#5355a6&bright&blossom=#ffffff&bloom=12,larch*#5355a6>#a8a5ec&bright"
+  - "emerald_block:birch*#a8a5ec&bright&second=#5355a6&blossom=#ffffff&bloom=12"
+  - "redstone_block:35%persimmon*#5355a6>#a8a5ec&bright&blossom=#a8a5ec&bloom=40,35%persimmon*#202955>#5355a6&bright&out,30%fever_tree*#5355a6&bright&second=#a8a5ec"
+  - "netherite_block:dark_oak*#202955&bright&second=#5355a6&blossom=#ffffff&bloom=12,pale_oak*#202955>#5355a6&bright&out,windswept_spruce*#202955>#5355a6&bright"
+  glutwald:
+  - "gold_block:25%maple*#81291f>#e65c25>#ffbe4c&bright&second=#ffbe4c&blossom=#ffbe4c&bloom=25,25%maple*#e65c25>#ffbe4c&bright&out,25%beech*#81291f>#ffbe4c&bright&second=#e65c25,25%oak*#81291f>#e65c25&bright"
+  - "diamond_block:norway_spruce*#81291f>#e65c25&bright,silver_fir*#81291f>#ffbe4c&bright&out,white_pine*#81291f>#e65c25&bright&blossom=#ffbe4c&bloom=25,larch*#e65c25>#ffbe4c&bright"
+  - "emerald_block:birch*#ffbe4c&bright&second=#e65c25&blossom=#ffbe4c&bloom=25"
+  - "redstone_block:35%persimmon*#e65c25>#ffbe4c&bright&blossom=#ffbe4c&bloom=40,35%persimmon*#81291f>#e65c25&bright&out,30%fever_tree*#e65c25&bright&second=#ffbe4c"
+  - "netherite_block:dark_oak*#81291f&bright&second=#e65c25&blossom=#ffbe4c&bloom=25,pale_oak*#81291f>#e65c25&bright&out,windswept_spruce*#81291f>#e65c25&bright"
+  blutwald:
+  - "gold_block:25%maple*#501b2d>#a92949>#eb6473&bright&second=#eb6473&blossom=#eb6473&bloom=20,25%maple*#a92949>#eb6473&bright&out,25%beech*#501b2d>#eb6473&bright&second=#a92949,25%oak*#501b2d>#a92949&bright"
+  - "diamond_block:norway_spruce*#501b2d>#a92949&bright,silver_fir*#501b2d>#eb6473&bright&out,white_pine*#501b2d>#a92949&bright&blossom=#eb6473&bloom=20,larch*#a92949>#eb6473&bright"
+  - "emerald_block:birch*#eb6473&bright&second=#a92949&blossom=#eb6473&bloom=20"
+  - "redstone_block:35%persimmon*#a92949>#eb6473&bright&blossom=#eb6473&bloom=40,35%persimmon*#501b2d>#a92949&bright&out,30%fever_tree*#a92949&bright&second=#eb6473"
+  - "netherite_block:dark_oak*#501b2d&bright&second=#a92949&blossom=#eb6473&bloom=20,pale_oak*#501b2d>#a92949&bright&out,windswept_spruce*#501b2d>#a92949&bright"
+  geisterwald:
+  - "gold_block:25%maple*#496b70>#8bb8b4>#d8f1e7&bright&second=#d8f1e7&blossom=#ffffff&bloom=25,25%maple*#8bb8b4>#d8f1e7&bright&out,25%beech*#496b70>#d8f1e7&bright&second=#8bb8b4,25%oak*#496b70>#8bb8b4&bright"
+  - "diamond_block:norway_spruce*#496b70>#8bb8b4&bright,silver_fir*#496b70>#d8f1e7&bright&out,white_pine*#496b70>#8bb8b4&bright&blossom=#ffffff&bloom=25,larch*#8bb8b4>#d8f1e7&bright"
+  - "emerald_block:birch*#d8f1e7&bright&second=#8bb8b4&blossom=#ffffff&bloom=25"
+  - "redstone_block:35%persimmon*#8bb8b4>#d8f1e7&bright&blossom=#d8f1e7&bloom=40,35%persimmon*#496b70>#8bb8b4&bright&out,30%fever_tree*#8bb8b4&bright&second=#d8f1e7"
+  - "netherite_block:dark_oak*#496b70&bright&second=#8bb8b4&blossom=#ffffff&bloom=25,pale_oak*#496b70>#8bb8b4&bright&out,windswept_spruce*#496b70>#8bb8b4&bright"
+  mondwald:
+  - "gold_block:25%maple*#3b536c>#87a9b9>#d7e4e6&bright&second=#d7e4e6&blossom=#ffffff&bloom=18,25%maple*#87a9b9>#d7e4e6&bright&out,25%beech*#3b536c>#d7e4e6&bright&second=#87a9b9,25%oak*#3b536c>#87a9b9&bright"
+  - "diamond_block:norway_spruce*#3b536c>#87a9b9&bright,silver_fir*#3b536c>#d7e4e6&bright&out,white_pine*#3b536c>#87a9b9&bright&blossom=#ffffff&bloom=18,larch*#87a9b9>#d7e4e6&bright"
+  - "emerald_block:birch*#d7e4e6&bright&second=#87a9b9&blossom=#ffffff&bloom=18"
+  - "redstone_block:35%persimmon*#87a9b9>#d7e4e6&bright&blossom=#d7e4e6&bloom=40,35%persimmon*#3b536c>#87a9b9&bright&out,30%fever_tree*#87a9b9&bright&second=#d7e4e6"
+  - "netherite_block:dark_oak*#3b536c&bright&second=#87a9b9&blossom=#ffffff&bloom=18,pale_oak*#3b536c>#87a9b9&bright&out,windswept_spruce*#3b536c>#87a9b9&bright"
+  goldwald:
+  - "gold_block:25%maple*#80601e>#d5a92e>#ffe68b&bright&second=#ffe68b&blossom=#fff8dc&bloom=20,25%maple*#d5a92e>#ffe68b&bright&out,25%beech*#80601e>#ffe68b&bright&second=#d5a92e,25%oak*#80601e>#d5a92e&bright"
+  - "diamond_block:norway_spruce*#80601e>#d5a92e&bright,silver_fir*#80601e>#ffe68b&bright&out,white_pine*#80601e>#d5a92e&bright&blossom=#fff8dc&bloom=20,larch*#d5a92e>#ffe68b&bright"
+  - "emerald_block:birch*#ffe68b&bright&second=#d5a92e&blossom=#fff8dc&bloom=20"
+  - "redstone_block:35%persimmon*#d5a92e>#ffe68b&bright&blossom=#ffe68b&bloom=40,35%persimmon*#80601e>#d5a92e&bright&out,30%fever_tree*#d5a92e&bright&second=#ffe68b"
+  - "netherite_block:dark_oak*#80601e&bright&second=#d5a92e&blossom=#fff8dc&bloom=20,pale_oak*#80601e>#d5a92e&bright&out,windswept_spruce*#80601e>#d5a92e&bright"
+  aschewald:
+  - "gold_block:25%maple*#34343b>#77737b>#c2b9b8&bright&second=#c2b9b8&drymistle=20,25%maple*#77737b>#c2b9b8&bright&out,25%beech*#34343b>#c2b9b8&bright&second=#77737b,25%oak*#34343b>#77737b&bright"
+  - "diamond_block:norway_spruce*#34343b>#77737b&bright,silver_fir*#34343b>#c2b9b8&bright&out,white_pine*#34343b>#77737b&bright&drymistle=20,larch*#77737b>#c2b9b8&bright"
+  - "emerald_block:birch*#c2b9b8&bright&second=#77737b&drymistle=20"
+  - "redstone_block:35%persimmon*#77737b>#c2b9b8&bright&blossom=#c2b9b8&bloom=40,35%persimmon*#34343b>#77737b&bright&out,30%fever_tree*#77737b&bright&second=#c2b9b8"
+  - "netherite_block:dark_oak*#34343b&bright&second=#77737b&drymistle=20,pale_oak*#34343b>#77737b&bright&out,windswept_spruce*#34343b>#77737b&bright"
+  feenwald:
+  - "gold_block:25%maple*#47785c>#8dcfa1>#e0f7b6&bright&second=#e0f7b6&blossom=#f8bbd0&bloom=35,25%maple*#8dcfa1>#e0f7b6&bright&out,25%beech*#47785c>#e0f7b6&bright&second=#8dcfa1,25%oak*#47785c>#8dcfa1&bright"
+  - "diamond_block:norway_spruce*#47785c>#8dcfa1&bright,silver_fir*#47785c>#e0f7b6&bright&out,white_pine*#47785c>#8dcfa1&bright&blossom=#f8bbd0&bloom=35,larch*#8dcfa1>#e0f7b6&bright"
+  - "emerald_block:birch*#e0f7b6&bright&second=#8dcfa1&blossom=#f8bbd0&bloom=35"
+  - "redstone_block:35%persimmon*#8dcfa1>#e0f7b6&bright&blossom=#e0f7b6&bloom=40,35%persimmon*#47785c>#8dcfa1&bright&out,30%fever_tree*#8dcfa1&bright&second=#e0f7b6"
+  - "netherite_block:dark_oak*#47785c&bright&second=#8dcfa1&blossom=#f8bbd0&bloom=35,pale_oak*#47785c>#8dcfa1&bright&out,windswept_spruce*#47785c>#8dcfa1&bright"
