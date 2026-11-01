@@ -104,6 +104,9 @@ preview:
   # --continuous the preview stops growing at this many instead, and until then grows
   # the markers of every chunk loaded later.
   max-trees: 500
+  # The most ghost blocks one preview holds, past which no more trees grow: giants with
+  # everything hanging on them would otherwise fill the server's memory.
+  max-ghosts: 1000000
   min-y: -64
   max-y: 160
   # Time spent per tick while growing a preview.

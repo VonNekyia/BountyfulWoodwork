@@ -139,6 +139,8 @@ final class TreePreview implements Listener {
         final Map<Long, long[]> trees = new HashMap<>();
         /** Ghost positions per chunk, to send them again when the chunk is sent again. */
         final Map<Long, Set<Long>> byChunk = new ConcurrentHashMap<>();
+        /** Whether its viewers heard it holds all the blocks it may. */
+        boolean toldFull;
         @Nullable BukkitTask task;
 
         Session(String key, PreviewSpec spec, long seed, UUID world, int x, int z, int radius,
@@ -300,7 +302,7 @@ final class TreePreview implements Listener {
                 // while the search still goes; otherwise every marker is counted first.
                 Block marker = session.continuous || chunks.isEmpty() ? markers.poll() : null;
                 if (marker != null) {
-                    if (session.trees.size() >= max) {
+                    if (full(session)) {
                         markers.clear();
                         chunks.clear();
                     } else if (grow(session, marker)) {
@@ -366,8 +368,7 @@ final class TreePreview implements Listener {
     /** A marker was set: every preview it lies in grows its tree, for all who look. */
     private void markerPlaced(Block marker) {
         for (Session session : sessions.values()) {
-            if (session.covers(marker) && session.spec.markers().contains(marker.getType())
-                    && session.trees.size() < session.limit) {
+            if (session.covers(marker) && session.spec.markers().contains(marker.getType()) && !full(session)) {
                 grow(session, marker);
             }
         }
@@ -381,6 +382,31 @@ final class TreePreview implements Listener {
                 remove(session, marker.getWorld(), key);
             }
         }
+    }
+
+    /**
+     * Whether a preview grows no more trees: at its limit, or holding the blocks the server
+     * keeps for one, which its viewers hear once. What stands stays.
+     */
+    private boolean full(Session session) {
+        if (session.trees.size() >= session.limit) {
+            return true;
+        }
+        int most = Math.max(1, config("max-ghosts", 1_000_000));
+        if (session.ghosts.size() < most) {
+            return false;
+        }
+        if (!session.toldFull) {
+            session.toldFull = true;
+            for (UUID viewer : session.viewers) {
+                Player looking = plugin.getServer().getPlayer(viewer);
+                if (looking != null) {
+                    looking.sendMessage(Component.text("This preview holds " + most
+                            + " blocks, the most it may, so no more trees grow.", NamedTextColor.YELLOW));
+                }
+            }
+        }
+        return true;
     }
 
     /** Grows the tree a marker gets in this preview and shows it to everyone in it. */
@@ -650,7 +676,7 @@ final class TreePreview implements Listener {
         Player player = event.getPlayer();
         Session session = watching.get(player.getUniqueId());
         if (session == null || !session.continuous || !session.world.equals(event.getWorld().getUID())
-                || session.trees.size() >= session.limit
+                || full(session)
                 || !session.scanned.add(chunkKey(event.getChunk().getX(), event.getChunk().getZ()))) {
             return;
         }
@@ -664,7 +690,7 @@ final class TreePreview implements Listener {
             ArrayDeque<Block> markers = new ArrayDeque<>();
             scan(world, snapshot, session, markers, session.limit - session.trees.size());
             for (Block marker : markers) {
-                if (session.trees.size() >= session.limit) {
+                if (full(session)) {
                     break;
                 }
                 grow(session, marker);
