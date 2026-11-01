@@ -61,6 +61,7 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRegisterChannelEvent;
+import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -358,13 +359,15 @@ final class TreePreview implements Listener {
     /**
      * Grows one tree for a player to look at, in that block, whatever stands in its way: no
      * search for markers, and a hit on it takes nothing away. It replaces any preview they
-     * had. Sneaking on the ground takes it away again and goes {@code back}.
+     * had. Sneaking on the ground or swapping hands takes it away again and goes {@code back}.
+     * The same seed grows the same tree, wherever they look.
      *
      * @return whether it grew; no tree of the spec may be left to grow
      */
-    boolean tryOut(Player player, PreviewSpec spec, Block at, Consumer<Player> back) {
+    boolean tryOut(Player player, PreviewSpec spec, Block at, long seed, Consumer<Player> back) {
         clear(player);
-        Session session = new Session("try " + player.getUniqueId(), spec, newSeed(), at.getWorld().getUID(),
+        // grow() draws from the seed and the place: this takes the place out again.
+        Session session = new Session("try " + player.getUniqueId(), spec, seed ^ mix(BlockKeys.of(at)), at.getWorld().getUID(),
                 at.getX(), at.getZ(), 0, at.getY(), at.getY(), false, 1, true);
         session.back = back;
         sessions.put(session.key, session);
@@ -380,12 +383,28 @@ final class TreePreview implements Listener {
     /** Back from a tree being tried out; in the air sneaking only means going down. */
     @EventHandler
     public void onSneak(PlayerToggleSneakEvent event) {
-        Player player = event.getPlayer();
-        Session session = watching.get(player.getUniqueId());
-        if (event.isSneaking() && !player.isFlying() && session != null && session.back != null) {
-            clear(player);
-            session.back.accept(player);
+        if (event.isSneaking() && !event.getPlayer().isFlying()) {
+            goBack(event.getPlayer());
         }
+    }
+
+    /** Back from a tree being tried out, in the air as well. */
+    @EventHandler
+    public void onSwapHands(PlayerSwapHandItemsEvent event) {
+        if (goBack(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    /** Whether there was a tree being tried out, now taken away. */
+    private boolean goBack(Player player) {
+        Session session = watching.get(player.getUniqueId());
+        if (session == null || session.back == null) {
+            return false;
+        }
+        clear(player);
+        session.back.accept(player);
+        return true;
     }
 
     /**

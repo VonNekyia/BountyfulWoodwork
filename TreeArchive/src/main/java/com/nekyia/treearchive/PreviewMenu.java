@@ -18,6 +18,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -128,6 +129,8 @@ final class PreviewMenu implements Listener {
 
     /** One tree of a marker block: what it is, its share among the block's trees, its paint and what hangs on it. */
     private static final class Tree {
+        /** Which archived tree, and which turn, Try it shows, so tries can be compared; not part of a preset. */
+        long seed = ThreadLocalRandom.current().nextLong();
         String word = "";
         int share = 1;
         int @Nullable [] colours;
@@ -616,6 +619,11 @@ final class PreviewMenu implements Listener {
                 marker.trees.remove(tree);
                 marker(who, markerIndex, null);
             }));
+            buttons.add(button(Component.text("Another one"), "Tries another archived tree of this kind, or another turn", TAB, (view, who) -> {
+                keep(view, tree, tab);
+                tree.seed = ThreadLocalRandom.current().nextLong();
+                tryOut(who, markerIndex, index, tab);
+            }));
         }
         if (tab == Tab.EXTRAS) {
             EXTRAS.forEach((group, extras) -> {
@@ -676,8 +684,9 @@ final class PreviewMenu implements Listener {
             return;
         }
         player.closeDialog();
-        if (preview.tryOut(player, PreviewSpec.parse(part), at, who -> tree(who, markerIndex, index, tab, null))) {
-            player.sendMessage(Component.text("Sneak on the ground to go back to the menu.", NamedTextColor.GREEN));
+        if (preview.tryOut(player, PreviewSpec.parse(part), at, tree.seed, who -> tree(who, markerIndex, index, tab, null))) {
+            player.sendMessage(Component.text("Sneak on the ground or press ", NamedTextColor.GREEN)
+                    .append(Component.keybind("key.swapOffhand")).append(Component.text(" to go back to the menu.")));
         } else {
             tree(player, markerIndex, index, tab, "No archived tree like that could grow.");
         }
