@@ -26,8 +26,12 @@ enum TreeExtra {
     static final int PLAIN = 10;
     /** The highest strength that counts: more would be a curtain, and many ghosts. */
     static final int STRONGEST = 50;
-    /** The most blocks one kind adds to one tree, however large its crown. */
-    static final int MOST_BLOCKS = 128;
+    /**
+     * The most blocks one kind adds to one tree. The largest crown in the archive asks for
+     * about 2100 at {@link #STRONGEST}, so the sliders count all the way; this only stops
+     * a crown far larger than any there is now.
+     */
+    static final int MOST_BLOCKS = 2500;
 
     private static final Set<Material> BLOCKS = EnumSet.noneOf(Material.class);
 
