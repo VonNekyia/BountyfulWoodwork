@@ -316,6 +316,11 @@ final class TreePreview implements Listener {
                             + counts[1] + " markers without room."
                             + (session.continuous ? " More grow as chunks load, up to " + max + "." : ""),
                             NamedTextColor.GREEN));
+                    if (counts[0] == 0 && counts[1] == 0) {
+                        player.sendMessage(Component.text("No marker blocks around here: this preview grows on "
+                                + String.join(", ", session.spec.markers().stream().map(block -> block.getKey().getKey())
+                                        .sorted().toList()) + ".", NamedTextColor.YELLOW));
+                    }
                     Objects.requireNonNull(session.task).cancel();
                     session.task = null;
                     return;

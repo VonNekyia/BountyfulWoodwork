@@ -95,4 +95,10 @@ class PreviewMenuTest {
     private static int count(int[][] colours, int colour) {
         return (int) java.util.Arrays.stream(colours).flatMapToInt(java.util.Arrays::stream).filter(each -> each == colour).count();
     }
+
+    /** A preset may hold a limit too long for a number, as the command takes any: it opens all the same. */
+    @Test
+    void aLimitTooLongIsNoLimit() {
+        assertEquals(List.of("--continuous"), again(List.of("--limit 99999999999", "--continuous")));
+    }
 }

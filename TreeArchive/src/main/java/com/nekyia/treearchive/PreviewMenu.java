@@ -205,7 +205,7 @@ final class PreviewMenu implements Listener {
         }
         player.showDialog(dialog("Tree previews", lines(note, preview.shared(player) != null
                 ? "A preview is showing." : "Marker blocks around you turn into trees from the archive - for your"
-                        + " eyes only."), List.of(), buttons, null));
+                        + " eyes only."), List.of(), buttons, button("Close", null, who -> who.closeDialog())));
     }
 
     /** The presets TreeArchive brings, a click from a forest; or, ticked, a copy to change. */
@@ -232,7 +232,7 @@ final class PreviewMenu implements Listener {
                 }));
             }
         }
-        player.showDialog(dialog("Quick forest", lines(note, null),
+        player.showDialog(dialog("Quick forest", lines(note, "Grows on gold, diamond, emerald, redstone and netherite blocks around you."),
                 List.of(DialogInput.bool("change", Component.text("Change it first: open a copy as my own")).build()),
                 buttons, button("Back", null, who -> main(who, null)), 4));
     }
@@ -808,7 +808,12 @@ final class PreviewMenu implements Listener {
             } else if (part.equals("--bypassterrain")) {
                 draft.bypassTerrain = true;
             } else if (part.startsWith("--limit ")) {
-                draft.limit = Integer.parseInt(part.substring("--limit ".length()));
+                // /ta preview preset add takes a limit of any length; one too long is none.
+                try {
+                    draft.limit = Integer.parseInt(part.substring("--limit ".length()));
+                } catch (NumberFormatException e) {
+                    draft.limit = 0;
+                }
             } else if (!PreviewLibrary.isFlag(part)) {
                 int colon = part.indexOf(':');
                 Marker marker = new Marker();
@@ -1043,7 +1048,13 @@ final class PreviewMenu implements Listener {
                     long now = System.nanoTime();
                     Long last = lastClick.put(player.getUniqueId(), now);
                     if (last == null || now - last >= CLICK_GAP) {
-                        action.accept(view, player);
+                        // The client waits for the next screen: one that fails must not leave it waiting.
+                        try {
+                            action.accept(view, player);
+                        } catch (RuntimeException e) {
+                            player.closeDialog();
+                            throw e;
+                        }
                     }
                 });
             }
