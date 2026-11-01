@@ -59,4 +59,32 @@ class PreviewMenuTest {
         assertEquals(0xff0000, ColourPicker.mixed(0f, 100f, 100f, "#6c8fe8", rgb));
         assertEquals(0xffffff, ColourPicker.mixed(9999f, -5f, 9999f, "#6c8fe8", rgb));
     }
+
+    /** The example block shows what the tree has: fade, brightness, secondary colour, and blossoms by how many. */
+    @Test
+    void theExampleBlockShowsTheTree() {
+        int blossom = 0xff00ff | LeafColours.PRESENT;
+        int secondary = 0x00ffff | LeafColours.PRESENT;
+        int[] red = {0xff0000};
+        assertEquals(0, count(ColourPicker.exampleColours(red, false, false, 0, 0, 30), 0xff00ff));
+        assertEquals(1, count(ColourPicker.exampleColours(red, false, false, 0, blossom, 20), 0xff00ff));
+        assertEquals(5, count(ColourPicker.exampleColours(red, false, false, 0, blossom, 100), 0xff00ff));
+        assertEquals(0, count(ColourPicker.exampleColours(red, false, false, 0, 0, 100), 0xff00ff));
+        assertEquals(5, count(ColourPicker.exampleColours(red, false, true, secondary, 0, 30), 0x00ebeb));
+        // Fading up: the last colour on top. Fading out: the first in the middle.
+        int[][] up = ColourPicker.exampleColours(new int[] {0x000000, 0xffffff}, false, true, 0, 0, 30);
+        assertEquals(0, up[4][0] >> 16 & 255);
+        assertTrue((up[0][0] >> 16 & 255) > 200);
+        int[][] out = ColourPicker.exampleColours(new int[] {0x000000, 0xffffff}, true, true, 0, 0, 30);
+        assertEquals(0, out[2][2]);
+        assertTrue((out[0][0] >> 16 & 255) > 200);
+        // Bright is lighter, and without a colour the block still shows its own green.
+        assertTrue((ColourPicker.exampleColours(red, false, true, 0, 0, 30)[0][0] >> 16 & 255)
+                > (ColourPicker.exampleColours(red, false, false, 0, 0, 30)[0][0] >> 16 & 255));
+        assertTrue((ColourPicker.exampleColours(null, false, false, 0, 0, 30)[0][0] >> 8 & 255) > 0);
+    }
+
+    private static int count(int[][] colours, int colour) {
+        return (int) java.util.Arrays.stream(colours).flatMapToInt(java.util.Arrays::stream).filter(each -> each == colour).count();
+    }
 }

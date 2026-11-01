@@ -421,18 +421,21 @@ final class PreviewMenu implements Listener {
         if (tab == Tab.LEAVES) {
             Consumer<Player> back = who -> tree(who, markerIndex, index, Tab.LEAVES, null);
             buttons.add(paint("Leaf colour", tree.colours, tree, new ColourPicker.Target("Leaf colour", () -> tree.colours,
-                    stops -> tree.colours = stops, back, true, true)));
+                    stops -> tree.colours = stops, back, true, true, stops -> ColourPicker.example(stops, tree.out, tree.bright,
+                    tree.secondary, tree.blossom, tree.bloom))));
             buttons.add(paint("Secondary", single(tree.secondary), tree, new ColourPicker.Target("Secondary colour",
                     () -> single(tree.secondary), stops -> tree.secondary = stops == null ? 0 : stops[0] | LeafColours.PRESENT,
-                    back, false, true)));
+                    back, false, true, stops -> ColourPicker.example(tree.colours, tree.out, tree.bright,
+                    stops == null ? 0 : stops[0] | LeafColours.PRESENT, tree.blossom, tree.bloom))));
             buttons.add(paint("Blossoms", single(tree.blossom), tree, new ColourPicker.Target("Blossom colour",
                     () -> single(tree.blossom), stops -> tree.blossom = stops == null ? 0 : stops[0] | LeafColours.PRESENT,
-                    back, false, true)));
+                    back, false, true, stops -> ColourPicker.example(tree.colours, tree.out, tree.bright, tree.secondary,
+                    stops == null ? 0 : stops[0] | LeafColours.PRESENT, tree.bloom))));
         }
         List<DialogBody> body = new ArrayList<>(lines(note, null));
-        body.add(DialogBody.plainMessage(tree.word.isEmpty() ? Component.text("No tree chosen yet.")
-                : describe(tree, marker.trees), WIDE));
-        player.showDialog(dialog("Tree on " + marker.blocks, body, inputs(tree, tab), buttons,
+        body.add(DialogBody.plainMessage(ColourPicker.example(tree.colours, tree.out, tree.bright, tree.secondary,
+                tree.blossom, tree.bloom), WIDE));
+        player.showDialog(dialog((tree.word.isEmpty() ? "New tree" : tree.word) + " on " + marker.blocks, body, inputs(tree, tab), buttons,
                 button("Done", null, (view, who) -> {
                     keep(view, tree, tab);
                     long matching = archive.entries().stream().filter(entry -> TreeArchive.matches(entry, tree.word)).count();

@@ -12,6 +12,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextComponent;
@@ -23,8 +24,9 @@ import org.jspecify.annotations.Nullable;
  * Picking a colour in the preview menu, the same for leaves, secondary colours and
  * blossoms: a click on the palette takes one; My colours holds what the player kept;
  * Mix makes any colour, by sliders or hex; and a fade is its colours in a row, each
- * picked the same way. A dialog cannot change while it is open, so a mixed colour shows
- * once it is applied. As everywhere in the menu, what comes back is only the client's
+ * picked the same way. An example block shows what is being made; a dialog cannot change
+ * while it is open, so it follows with every click, and a mixed colour once it is applied.
+ * Dialogs cannot tint a block's icon, so the block is drawn in coloured squares. As everywhere in the menu, what comes back is only the client's
  * word: sliders are clamped, hex and names are read as if they were typed.
  */
 final class ColourPicker {
@@ -32,10 +34,11 @@ final class ColourPicker {
     /**
      * What a colour is picked for: reads what it has, takes what is picked - null for
      * none, where {@code none} allows it - and goes back; with {@code fades} it may be a
-     * fade, otherwise a colour alone.
+     * fade, otherwise a colour alone. {@code example} draws the example block as it would
+     * be with a colour picked.
      */
     record Target(String title, Supplier<int @Nullable []> current, Consumer<int @Nullable []> take,
-                  Consumer<Player> back, boolean fades, boolean none) {
+                  Consumer<Player> back, boolean fades, boolean none, Function<int @Nullable [], Component> example) {
     }
 
     /** A kept colour being changed: its name as typed so far, and its colours. */
@@ -56,6 +59,15 @@ final class ColourPicker {
     private static final int WIDE = 300;
     private static final int MAX_STOPS = 5;
     private static final int FRESH = 0x6b8e23;
+    /** The green of leaves without a colour from the server, more or less. */
+    private static final int OWN_GREEN = 0x59ae30;
+    /**
+     * The example block, a leaf texture in small: 1 to 3 are shades of the leaf colour, S
+     * takes the secondary colour, and B the blossoms, one for every fifth of the leaves in bloom.
+     */
+    private static final String[] BLOCK = {"2B31S", "3S2B1", "B13S2", "2S1B3", "31B2S"};
+    private static final double[] SHADES = {0.55, 0.70, 0.85};
+    private static final double[] SHADES_BRIGHT = {0.80, 0.92, 1.0};
     /** Rows of eight: greens, autumn, blossoms and light, cold and magic, dark and earth. */
     private static final int[] PALETTE = {
         0x9ccc65, 0x7cb342, 0x558b2f, 0x33691e, 0x2e7d32, 0x1b5e20, 0x1f4d2b, 0x26a69a,
@@ -114,10 +126,8 @@ final class ColourPicker {
         }
         // One line, to keep the palette and what follows it in sight on a small window.
         int[] current = target.current().get();
-        List<DialogBody> body = new ArrayList<>(PreviewMenu.lines(note, current == null ? "Click a colour to take it." : null));
-        if (current != null) {
-            body.add(DialogBody.plainMessage(Component.text("Now: ").append(gradient(current)), WIDE));
-        }
+        List<DialogBody> body = new ArrayList<>(PreviewMenu.lines(note, null));
+        body.add(DialogBody.plainMessage(target.example().apply(current), WIDE));
         player.showDialog(PreviewMenu.dialog(target.title(), body, List.of(), buttons,
                 menu.button("Back", null, target.back()), COLUMNS));
     }
@@ -149,7 +159,7 @@ final class ColourPicker {
                         .initial((float) Math.round(hsb[1] * 100)).width(WIDE).build(),
                 DialogInput.numberRange("brightness", Component.text("Brightness"), 0, 100).step(1f)
                         .initial((float) Math.round(hsb[2] * 100)).width(WIDE).build(),
-                DialogInput.text("hex", Component.text("Hex")).initial(hex(rgb)).maxLength(7).width(WIDE).build());
+                DialogInput.text("hex", Component.text("Hex")).labelVisible(false).initial(hex(rgb)).maxLength(7).width(WIDE).build());
         List<ActionButton> buttons = List.of(
                 menu.button(Component.text("Apply"), "Shows the colour here", 100, (view, who) -> mix(who, target, read(view, rgb), null)),
                 menu.button(Component.text("Use it"), "Takes the colour", 100, (view, who) -> {
@@ -159,11 +169,7 @@ final class ColourPicker {
                 menu.button(Component.text("Keep ..."), "Also keeps it in My colours", 100,
                         (view, who) -> keepAs(who, target, read(view, rgb), null)));
         List<DialogBody> body = new ArrayList<>(PreviewMenu.lines(note, null));
-        TextComponent.Builder big = Component.text();
-        for (int i = 0; i < 10; i++) {
-            big.append(cell(rgb));
-        }
-        body.add(DialogBody.plainMessage(big.build().append(Component.text(" " + hex(rgb))), WIDE));
+        body.add(DialogBody.plainMessage(target.example().apply(new int[] {rgb}), WIDE));
         player.showDialog(PreviewMenu.dialog(target.title() + ": mix", body, inputs, buttons,
                 menu.button("Back", null, who -> palette(who, target, null)), 3));
     }
@@ -219,14 +225,13 @@ final class ColourPicker {
     private void fade(Player player, Target target, @Nullable String note) {
         int[] current = target.current().get();
         int[] stops = current == null ? new int[] {FRESH, FRESH} : current;
-        List<ActionButton> buttons = new ArrayList<>(stopButtons(stops, target.title(), target.take(),
-                who -> fade(who, target, null)));
+        List<ActionButton> buttons = new ArrayList<>(stopButtons(stops, target, who -> fade(who, target, null)));
         if (stops.length < MAX_STOPS) {
             buttons.add(menu.button(Component.text("Add"), "One more colour at the end", CELL, who -> {
                 int[] longer = Arrays.copyOf(stops, stops.length + 1);
                 longer[stops.length] = stops[stops.length - 1];
                 target.take().accept(longer);
-                palette(who, stop(stops.length, longer, target.title(), target.take(), wh -> fade(wh, target, null)), null);
+                palette(who, stop(stops.length, longer, target, wh -> fade(wh, target, null)), null);
             }));
         }
         buttons.add(menu.button(Component.text("Drop"), "Takes the last colour away", CELL, who -> {
@@ -237,31 +242,36 @@ final class ColourPicker {
                 target.back().accept(who);
             }
         }));
-        List<DialogBody> body = new ArrayList<>(PreviewMenu.lines(note, "Click a colour to change it."));
+        List<DialogBody> body = new ArrayList<>(PreviewMenu.lines(note, null));
+        body.add(DialogBody.plainMessage(target.example().apply(stops), WIDE));
         body.add(DialogBody.plainMessage(gradient(stops), WIDE));
         player.showDialog(PreviewMenu.dialog(target.title() + ": fade", body, List.of(), buttons,
                 menu.button("Done", null, target.back()), COLUMNS));
     }
 
-    private List<ActionButton> stopButtons(int[] stops, String title, Consumer<int @Nullable []> take, Consumer<Player> back) {
+    private List<ActionButton> stopButtons(int[] stops, Target fade, Consumer<Player> back) {
         List<ActionButton> buttons = new ArrayList<>();
         for (int i = 0; i < stops.length; i++) {
             int index = i;
             buttons.add(menu.button(cell(stops[i]), hex(stops[i]), CELL,
-                    who -> palette(who, stop(index, stops, title, take, back), null)));
+                    who -> palette(who, stop(index, stops, fade, back), null)));
         }
         return buttons;
     }
 
-    /** One colour of a fade as something to pick for. */
-    private static Target stop(int index, int[] stops, String title, Consumer<int @Nullable []> take, Consumer<Player> back) {
-        return new Target(title + ": colour " + (index + 1), () -> new int[] {stops[index]}, picked -> {
+    /** One colour of a fade as something to pick for; the example shows the whole fade with it. */
+    private static Target stop(int index, int[] stops, Target fade, Consumer<Player> back) {
+        return new Target(fade.title() + ": colour " + (index + 1), () -> new int[] {stops[index]}, picked -> {
             if (picked != null) {
-                int[] changed = stops.clone();
-                changed[index] = picked[0];
-                take.accept(changed);
+                fade.take().accept(with(stops, index, picked[0]));
             }
-        }, back, false, false);
+        }, back, false, false, picked -> fade.example().apply(picked == null ? stops : with(stops, index, picked[0])));
+    }
+
+    private static int[] with(int[] stops, int index, int colour) {
+        int[] changed = stops.clone();
+        changed[index] = colour;
+        return changed;
     }
 
     // ---- my colours -----------------------------------------------------------------
@@ -283,14 +293,15 @@ final class ColourPicker {
     }
 
     private void edit(Player player, Kept kept, @Nullable String note) {
-        Consumer<int @Nullable []> take = stops -> kept.stops = stops == null ? kept.stops : stops;
         Consumer<Player> back = who -> edit(who, kept, null);
+        Target colour = new Target("Colour", () -> kept.stops, stops -> kept.stops = stops == null ? kept.stops : stops, back,
+                true, false, stops -> example(stops, false, false, 0, 0, TreeSelection.BLOOM));
         List<ActionButton> buttons = new ArrayList<>();
         for (int i = 0; i < kept.stops.length; i++) {
             int index = i;
             buttons.add(menu.button(cell(kept.stops[i]), hex(kept.stops[i]), CELL, (view, who) -> {
                 name(view, kept);
-                palette(who, stop(index, kept.stops, "Colour", take, back), null);
+                palette(who, stop(index, kept.stops, colour, back), null);
             }));
         }
         if (kept.stops.length < MAX_STOPS) {
@@ -299,7 +310,7 @@ final class ColourPicker {
                 int[] longer = Arrays.copyOf(kept.stops, kept.stops.length + 1);
                 longer[kept.stops.length] = kept.stops[kept.stops.length - 1];
                 kept.stops = longer;
-                palette(who, stop(longer.length - 1, longer, "Colour", take, back), null);
+                palette(who, stop(longer.length - 1, longer, colour, back), null);
             }));
         }
         if (kept.stops.length > 1) {
@@ -324,8 +335,8 @@ final class ColourPicker {
                 manage(who, "Deleted " + kept.original + ".");
             }));
         }
-        List<DialogBody> body = new ArrayList<>(PreviewMenu.lines(note, "Click a colour to change it."));
-        body.add(DialogBody.plainMessage(gradient(kept.stops), WIDE));
+        List<DialogBody> body = new ArrayList<>(PreviewMenu.lines(note, null));
+        body.add(DialogBody.plainMessage(colour.example().apply(kept.stops), WIDE));
         player.showDialog(PreviewMenu.dialog(kept.original == null ? "New colour" : "Colour " + kept.original, body,
                 List.of(DialogInput.text("name", Component.text("Name")).initial(kept.name).maxLength(32).width(WIDE).build()),
                 buttons, menu.button("Back", null, who -> manage(who, null)), COLUMNS));
@@ -363,6 +374,56 @@ final class ColourPicker {
 
     private static Component cell(int colour) {
         return Component.text("██", TextColor.color(colour & 0xFFFFFF));
+    }
+
+    /**
+     * The example block's colours, row by row from the top: leaf colours in shades - lighter
+     * ones when bright - fading up the block or out from its middle as the crown would, with
+     * the secondary colour and the blossoms in their places.
+     */
+    static int[][] exampleColours(int @Nullable [] stops, boolean out, boolean bright, int secondary, int blossom, int bloom) {
+        int[][] colours = new int[BLOCK.length][BLOCK[0].length()];
+        int blossoms = 0;
+        double[] shades = bright ? SHADES_BRIGHT : SHADES;
+        for (int row = 0; row < BLOCK.length; row++) {
+            for (int column = 0; column < BLOCK[row].length(); column++) {
+                double share = out
+                        ? Math.hypot(column - 2, row - 2) / Math.hypot(2, 2)
+                        : (BLOCK.length - 1 - row) / (BLOCK.length - 1.0);
+                int leaf = stops == null ? OWN_GREEN : stops.length > 1 ? LeafColours.fade(stops, share) : stops[0];
+                char kind = BLOCK[row].charAt(column);
+                colours[row][column] = switch (kind) {
+                    case 'S' -> secondary != 0 ? shaded(secondary, shades[1]) : shaded(leaf, shades[1]);
+                    // One square in five for every fifth of the leaves in bloom.
+                    case 'B' -> blossom != 0 && 20 * blossoms++ < bloom ? blossom & 0xFFFFFF : shaded(leaf, shades[2]);
+                    default -> shaded(leaf, shades[kind - '1']);
+                };
+            }
+        }
+        return colours;
+    }
+
+    private static int shaded(int colour, double shade) {
+        int shadedColour = 0;
+        for (int shift = 0; shift <= 16; shift += 8) {
+            shadedColour |= (int) Math.round((colour >> shift & 255) * shade) << shift;
+        }
+        return shadedColour;
+    }
+
+    /** The example block as text, a row to a line. */
+    static Component example(int @Nullable [] stops, boolean out, boolean bright, int secondary, int blossom, int bloom) {
+        TextComponent.Builder block = Component.text();
+        int[][] colours = exampleColours(stops, out, bright, secondary, blossom, bloom);
+        for (int row = 0; row < colours.length; row++) {
+            if (row > 0) {
+                block.append(Component.newline());
+            }
+            for (int colour : colours[row]) {
+                block.append(Component.text("\u2588", TextColor.color(colour)));
+            }
+        }
+        return block.build();
     }
 
     /** The colours as a bar: one for a colour alone, a fade's colours run into each other. */
