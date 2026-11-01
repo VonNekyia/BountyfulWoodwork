@@ -101,4 +101,23 @@ class PreviewMenuTest {
     void aLimitTooLongIsNoLimit() {
         assertEquals(List.of("--continuous"), again(List.of("--limit 99999999999", "--continuous")));
     }
+
+    /** All that can hang on a tree comes back as written, each at its strength or at the one meant without a number. */
+    @Test
+    void keepsWhatHangsOnATree() {
+        List<String> parts = List.of("gold_block:maple&mistle=30&drymistle&vines=20&lichen&glowberries=5&roots=7&weeping=9&twisting=40");
+        assertEquals(parts, again(parts));
+    }
+
+    /** Every block that can hang counts as foliage, or a hit on its ghost would take the real marker away. */
+    @Test
+    void everythingThatHangsIsKnown() {
+        for (TreeExtra extra : TreeExtra.values()) {
+            assertTrue(TreeExtra.hanging(extra.body), extra.modifier);
+            assertTrue(TreeExtra.hanging(extra.tip), extra.modifier);
+            assertTrue(TreeSelection.MODIFIERS.contains(extra.modifier), extra.modifier);
+            assertTrue(TreeSelection.WITH_STRENGTH.contains(extra.modifier), extra.modifier);
+        }
+        assertFalse(TreeExtra.hanging(org.bukkit.Material.STONE));
+    }
 }

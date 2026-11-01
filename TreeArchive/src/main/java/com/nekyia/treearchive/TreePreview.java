@@ -407,7 +407,7 @@ final class TreePreview implements Listener {
         if (placements == null) {
             return false;
         }
-        placements = paster.mistle(placements, pick.modifiers(), marker.getWorld(), random,
+        placements = paster.decorate(placements, pick.modifiers(), marker.getWorld(), random,
                 session.bypassTerrain);
 
         long[] keys = new long[placements.size()];

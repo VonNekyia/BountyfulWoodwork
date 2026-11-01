@@ -91,8 +91,8 @@ record PreviewSpec(List<Part> parts) {
                     }
                 } else if (value != null && (!TreeSelection.WITH_STRENGTH.contains(name)
                         || !value.matches("[1-9][0-9]?|100"))) {
-                    throw new IllegalArgumentException("'&" + modifier + "' takes no value; &mistle, &drymistle"
-                            + " and &bloom take one from 1 to 100, like &mistle=30");
+                    throw new IllegalArgumentException("'&" + modifier + "' takes no value; &bloom, mistletoe, vines and"
+                            + " what else hangs on a tree take one from 1 to 100, like &mistle=30");
                 }
             }
             for (String modifier : List.of("bright", "out", "second", "blossom", "bloom")) {

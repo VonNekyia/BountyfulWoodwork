@@ -7,7 +7,6 @@ import io.papermc.paper.registry.data.dialog.DialogBase;
 import io.papermc.paper.registry.data.dialog.action.DialogAction;
 import io.papermc.paper.registry.data.dialog.body.DialogBody;
 import io.papermc.paper.registry.data.dialog.input.DialogInput;
-import io.papermc.paper.registry.data.dialog.input.SingleOptionDialogInput;
 import io.papermc.paper.registry.data.dialog.type.DialogType;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -41,7 +40,7 @@ import org.jspecify.annotations.Nullable;
  * preview is put together marker block by marker block, each with its trees - a type, a
  * size, a creator or a name - their shares, their leaf colours from the player's own
  * colours, bright or fading outwards, a secondary colour, blossoms and how many, and
- * mistletoe of a strength; colours are picked in the {@link ColourPicker}. It is shown right
+ * mistletoe, vines and what else hangs on a tree, each of a strength; colours are picked in the {@link ColourPicker}. It is shown right
  * away, or kept as a preset: on the player's own shelf, or in a namespace everyone can
  * use and only those with treearchive.namespaces change. What the menu makes is written
  * the way /ta preview reads it, so presets, hashes and shared links work as before.
@@ -63,7 +62,6 @@ final class PreviewMenu implements Listener {
             .uses(ClickCallback.UNLIMITED_USES).lifetime(Duration.ofMinutes(10)).build();
     /** Clicks closer together than this are dropped, in nanoseconds: nobody clicks that fast by hand. */
     private static final long CLICK_GAP = 100_000_000L;
-    private static final String NONE = "none";
     /** The marker blocks the built-in presets use, and what grows on them there. */
     private static final Map<String, String> MARKERS = new LinkedHashMap<>();
 
@@ -97,16 +95,43 @@ final class PreviewMenu implements Listener {
         }
     }
 
-    /** One tree of a marker block: what it is, its share among the block's trees, its paint and mistletoe. */
+    /**
+     * One thing that can hang on a tree: its modifier, what it is called, the highest
+     * strength its slider goes to, and the strength it means written without a number.
+     */
+    private record Extra(String modifier, String label, int top, int plain) {
+    }
+
+    /** What can hang on a tree, as the Extras tab groups it into screens: more would not fit on one. */
+    private static final Map<String, List<Extra>> EXTRAS = new LinkedHashMap<>();
+
+    static {
+        EXTRAS.put("Crown", List.of(
+                new Extra("mistle", "Mistletoe: moss with bushes", 100, TreePaster.MISTLE_STRENGTH),
+                new Extra("drymistle", "Dry mistletoe: roots with dry grass", 100, TreePaster.MISTLE_STRENGTH)));
+        EXTRAS.put("Lianes", List.of(
+                extra(TreeExtra.VINES, "Vines"),
+                extra(TreeExtra.LICHEN, "Glow lichen")));
+        EXTRAS.put("Hanging", List.of(
+                extra(TreeExtra.GLOWBERRIES, "Glow berries"),
+                extra(TreeExtra.ROOTS, "Hanging roots"),
+                extra(TreeExtra.WEEPING, "Weeping vines"),
+                extra(TreeExtra.TWISTING, "Twisting vines, growing up")));
+    }
+
+    private static Extra extra(TreeExtra extra, String label) {
+        return new Extra(extra.modifier, label, TreeExtra.STRONGEST, TreeExtra.PLAIN);
+    }
+
+    /** One tree of a marker block: what it is, its share among the block's trees, its paint and what hangs on it. */
     private static final class Tree {
         String word = "";
         int share = 1;
         int @Nullable [] colours;
         boolean bright;
         boolean out;
-        /** none, mistle or drymistle. */
-        String mistle = NONE;
-        int strength = TreePaster.MISTLE_STRENGTH;
+        /** What hangs on it, by modifier, and how strongly; what is not here is not there. */
+        final Map<String, Integer> extras = new HashMap<>();
         /** A secondary colour some of the leaves take, and the blossoms' colour - PRESENT set - or 0. */
         int secondary;
         int blossom;
@@ -585,6 +610,13 @@ final class PreviewMenu implements Listener {
                 marker(who, markerIndex, null);
             }));
         }
+        if (tab == Tab.EXTRAS) {
+            EXTRAS.forEach((group, extras) -> {
+                long on = extras.stream().filter(extra -> tree.extras.containsKey(extra.modifier())).count();
+                buttons.add(button(Component.text(group + (on > 0 ? " (" + on + ")" : "")), extras.stream().map(Extra::label)
+                        .collect(Collectors.joining(", ")), TAB, who -> extras(who, markerIndex, index, group)));
+            });
+        }
         if (tab == Tab.LEAVES) {
             Consumer<Player> back = who -> tree(who, markerIndex, index, Tab.LEAVES, null);
             buttons.add(paint("Leaf colour", tree.colours, tree, new ColourPicker.Target("Leaf colour", () -> tree.colours,
@@ -620,6 +652,38 @@ final class PreviewMenu implements Listener {
                         marker(who, markerIndex, null);
                     }
                 }), 3));
+    }
+
+    /** One group of what can hang on a tree: a slider each, 0 for none. */
+    private void extras(Player player, int markerIndex, int index, String group) {
+        Draft draft = drafts.get(player.getUniqueId());
+        if (draft == null || markerIndex >= draft.markers.size()
+                || index >= draft.markers.get(markerIndex).trees.size()) {
+            editor(player, null);
+            return;
+        }
+        Tree tree = draft.markers.get(markerIndex).trees.get(index);
+        List<Extra> extras = EXTRAS.get(group);
+        List<DialogInput> inputs = new ArrayList<>();
+        for (Extra extra : extras) {
+            inputs.add(DialogInput.numberRange(extra.modifier(), Component.text(extra.label() + ", %"), 0, extra.top()).step(1f)
+                    .initial((float) Math.min(tree.extras.getOrDefault(extra.modifier(), 0), extra.top())).width(WIDE).build());
+        }
+        player.showDialog(dialog(group, lines(null, "Share of the leaves; 0 for none."), inputs, List.of(), button("Done", null, (view, who) -> {
+            for (Extra extra : extras) {
+                Float value = view.getFloat(extra.modifier());
+                if (value != null && !value.isNaN()) {
+                    // The client's word only: within the slider, whatever it sent.
+                    int strength = Math.clamp(Math.round(value), 0, extra.top());
+                    if (strength == 0) {
+                        tree.extras.remove(extra.modifier());
+                    } else {
+                        tree.extras.put(extra.modifier(), strength);
+                    }
+                }
+            }
+            tree(who, markerIndex, index, Tab.EXTRAS, null);
+        })));
     }
 
     /** A button naming a colour of the tree and showing it, keeping the tab's inputs on the way to the picker. */
@@ -671,15 +735,7 @@ final class PreviewMenu implements Listener {
                 }
             }
             case EXTRAS -> {
-                inputs.add(DialogInput.singleOption("mistle", Component.text("Mistletoe"), List.of(
-                        SingleOptionDialogInput.OptionEntry.create(NONE, Component.text("None"), tree.mistle.equals(NONE)),
-                        SingleOptionDialogInput.OptionEntry.create("mistle", Component.text("Moss with bushes"),
-                                tree.mistle.equals("mistle")),
-                        SingleOptionDialogInput.OptionEntry.create("drymistle",
-                                Component.text("Dry - mangrove roots with dry grass"), tree.mistle.equals("drymistle"))))
-                        .width(WIDE).build());
-                inputs.add(DialogInput.numberRange("strength", Component.text("Mistletoe in place of leaves, %"), 1, 100)
-                        .step(1f).initial((float) tree.strength).width(WIDE).build());
+                // Asked on their own screens, by group.
             }
         }
         return inputs;
@@ -698,9 +754,7 @@ final class PreviewMenu implements Listener {
                 tree.bloom = percent(view.getFloat("bloom"), tree.bloom);
             }
             case EXTRAS -> {
-                String mistle = view.getText("mistle");
-                tree.mistle = "mistle".equals(mistle) || "drymistle".equals(mistle) ? mistle : NONE;
-                tree.strength = percent(view.getFloat("strength"), tree.strength);
+                // Read on their own screens.
             }
         }
     }
@@ -830,13 +884,12 @@ final class PreviewMenu implements Listener {
                         tree.blossom = TreeSelection.colour(written.modifiers(), "blossom");
                         String bloom = TreeSelection.find(written.modifiers(), "bloom");
                         tree.bloom = bloom == null ? TreeSelection.BLOOM : TreeSelection.strength(bloom, TreeSelection.BLOOM);
-                        for (String kind : List.of("mistle", "drymistle")) {
-                            String modifier = TreeSelection.find(written.modifiers(), kind);
+                        EXTRAS.values().stream().flatMap(List::stream).forEach(extra -> {
+                            String modifier = TreeSelection.find(written.modifiers(), extra.modifier());
                             if (modifier != null) {
-                                tree.mistle = kind;
-                                tree.strength = TreeSelection.strength(modifier, TreePaster.MISTLE_STRENGTH);
+                                tree.extras.put(extra.modifier(), TreeSelection.strength(modifier, extra.plain()));
                             }
-                        }
+                        });
                         marker.trees.add(tree);
                     }
                 }
@@ -880,10 +933,12 @@ final class PreviewMenu implements Listener {
                     .append(tree.blossom == 0 ? "" : "&blossom=" + hex(new int[] {tree.blossom}))
                     .append(tree.blossom == 0 || tree.bloom == TreeSelection.BLOOM ? "" : "&bloom=" + tree.bloom);
         }
-        if (!tree.mistle.equals(NONE)) {
-            written.append('&').append(tree.mistle)
-                    .append(tree.strength == TreePaster.MISTLE_STRENGTH ? "" : "=" + tree.strength);
-        }
+        EXTRAS.values().stream().flatMap(List::stream).forEach(extra -> {
+            Integer strength = tree.extras.get(extra.modifier());
+            if (strength != null) {
+                written.append('&').append(extra.modifier()).append(strength == extra.plain() ? "" : "=" + strength);
+            }
+        });
         return written.toString();
     }
 
@@ -932,9 +987,12 @@ final class PreviewMenu implements Listener {
         if (tree.colours != null && tree.out) {
             also.add("fading out");
         }
-        if (!tree.mistle.equals(NONE)) {
-            also.add((tree.mistle.equals("drymistle") ? "dry mistletoe " : "mistletoe ") + tree.strength + "%");
-        }
+        EXTRAS.values().stream().flatMap(List::stream).forEach(extra -> {
+            Integer strength = tree.extras.get(extra.modifier());
+            if (strength != null) {
+                also.add(extra.modifier() + " " + strength + "%");
+            }
+        });
         if (!also.isEmpty()) {
             line.append(Component.text(" (" + String.join(", ", also) + ")", NamedTextColor.GRAY));
         }

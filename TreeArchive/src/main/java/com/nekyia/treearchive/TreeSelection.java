@@ -37,11 +37,14 @@ record TreeSelection(List<Part> parts, Field field) {
      * drymistle dry mistletoe for fall trees, mangrove roots with dry grass. Mistletoe takes
      * a strength, the share of the leaves it stands in for: mistle=30. second=#f5d130 gives
      * some of the leaves a secondary colour, blossom=#ffb7c5 blossoms, on bloom=40 percent
-     * of the leaves - 30 without.
+     * of the leaves - 30 without. vines, lichen, glowberries, roots, weeping and twisting
+     * hang what they say on the leaves, see {@link TreeExtra}: vines=10.
      */
-    static final Set<String> MODIFIERS = Set.of("bright", "out", "mistle", "drymistle", "second", "blossom", "bloom");
+    static final Set<String> MODIFIERS = Set.of("bright", "out", "mistle", "drymistle", "second", "blossom", "bloom",
+            "vines", "lichen", "glowberries", "roots", "weeping", "twisting");
     /** The modifiers that take a strength, from 1 to 100. */
-    static final Set<String> WITH_STRENGTH = Set.of("mistle", "drymistle", "bloom");
+    static final Set<String> WITH_STRENGTH = Set.of("mistle", "drymistle", "bloom",
+            "vines", "lichen", "glowberries", "roots", "weeping", "twisting");
     /** The modifiers that take one colour. */
     static final Set<String> WITH_COLOUR = Set.of("second", "blossom");
     /** How many of a tree's leaves bloom without a bloom=, in percent. */

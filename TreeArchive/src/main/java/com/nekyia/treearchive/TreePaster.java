@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -26,6 +27,10 @@ import org.bukkit.Tag;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
+import org.bukkit.block.data.Ageable;
+import org.bukkit.block.data.BlockData;
+import org.bukkit.block.data.MultipleFacing;
+import org.bukkit.block.data.type.CaveVinesPlant;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jspecify.annotations.Nullable;
@@ -42,6 +47,9 @@ final class TreePaster {
 
     /** About one leaf in six becomes mistletoe, as on the birches in the archive - in percent. */
     static final int MISTLE_STRENGTH = 18;
+    /** How many of the links of glow berries' vines carry berries. */
+    private static final double BERRIES = 0.3;
+    private static final List<BlockFace> SIDES = List.of(BlockFace.NORTH, BlockFace.EAST, BlockFace.SOUTH, BlockFace.WEST);
     /** And most of it, about three in five, has a bush on top. */
     private static final double MISTLE_BUSH_SHARE = 0.62;
 
@@ -98,7 +106,7 @@ final class TreePaster {
     }
 
     /**
-     * As above, with the mistletoe the tree's modifiers ask for hung in the crown, and the
+     * As above, with what the tree's modifiers ask for hung in the crown, and the
      * leaves painted - kept in their chunks, see {@link #keepColours}.
      */
     boolean paste(String type, Clipboard clipboard, Block base, @Nullable Player player, boolean intoTrees,
@@ -108,7 +116,7 @@ final class TreePaster {
         if (placements == null) {
             return false;
         }
-        placements = mistle(placements, modifiers, base.getWorld(), ThreadLocalRandom.current(), false);
+        placements = decorate(placements, modifiers, base.getWorld(), ThreadLocalRandom.current(), false);
 
         World world = base.getWorld();
         try (EditSession session = WorldEdit.getInstance().newEditSession(BukkitAdapter.adapt(world))) {
@@ -225,9 +233,9 @@ final class TreePaster {
         return placements;
     }
 
-    /** Hangs the mistletoe these modifiers ask for, if any, in the crown. */
-    List<Placement> mistle(List<Placement> placements, Set<String> modifiers, World world, RandomGenerator random,
-                           boolean bypassTerrain) {
+    /** Hangs what these modifiers ask for, if anything, in the crown: mistletoe first, then the rest on the leaves left. */
+    List<Placement> decorate(List<Placement> placements, Set<String> modifiers, World world, RandomGenerator random,
+                             boolean bypassTerrain) {
         for (Mistletoe kind : Mistletoe.values()) {
             String modifier = TreeSelection.find(modifiers, kind.modifier);
             if (modifier != null) {
@@ -235,7 +243,80 @@ final class TreePaster {
                         world, random, bypassTerrain);
             }
         }
+        for (TreeExtra extra : TreeExtra.values()) {
+            String modifier = TreeSelection.find(modifiers, extra.modifier);
+            if (modifier != null) {
+                int strength = Math.min(TreeSelection.strength(modifier, TreeExtra.PLAIN), TreeExtra.STRONGEST);
+                placements = hang(placements, extra, strength / 100.0, world, random, bypassTerrain);
+            }
+        }
         return placements;
+    }
+
+    /**
+     * Hangs one kind on {@code share} of the leaves, drawn from {@code random} so a shared
+     * preview hangs the same: a chain of a random length from a free side of the leaf, which
+     * ends at the first spot taken or firm - anywhere with {@code bypassTerrain}, within the
+     * world. At most {@link TreeExtra#MOST_BLOCKS} blocks to a tree.
+     */
+    private List<Placement> hang(List<Placement> placements, TreeExtra extra, double share, World world,
+                                 RandomGenerator random, boolean bypassTerrain) {
+        Set<Long> taken = new HashSet<>();
+        List<Placement> leaves = new ArrayList<>();
+        for (Placement placement : placements) {
+            taken.add(BlockKeys.of(placement.x(), placement.y(), placement.z()));
+            if (Tag.LEAVES.isTagged(BukkitAdapter.adapt(placement.block().getBlockType()))) {
+                leaves.add(placement);
+            }
+        }
+        Collections.shuffle(leaves, random);
+        BlockFace along = extra.grows == TreeExtra.Grows.UP ? BlockFace.UP : BlockFace.DOWN;
+        List<Placement> result = new ArrayList<>(placements);
+        long wanted = Math.round(leaves.size() * share);
+        int hung = 0;
+        int blocks = 0;
+        for (Placement leaf : leaves) {
+            if (hung >= wanted || blocks >= TreeExtra.MOST_BLOCKS) {
+                break;
+            }
+            BlockFace from = extra.grows == TreeExtra.Grows.SIDE ? SIDES.get(random.nextInt(SIDES.size())) : along;
+            int length = 1 + random.nextInt(extra.length);
+            int x = leaf.x() + from.getModX();
+            int y = leaf.y() + from.getModY();
+            int z = leaf.z() + from.getModZ();
+            int chain = 0;
+            while (chain < length && free(taken, world, x, y + along.getModY() * chain, z, bypassTerrain)) {
+                chain++;
+            }
+            for (int i = 0; i < chain; i++) {
+                int at = y + along.getModY() * i;
+                taken.add(BlockKeys.of(x, at, z));
+                result.add(new Placement(x, at, z, hanging(extra, i == chain - 1, from.getOppositeFace(), random)));
+            }
+            hung += chain > 0 ? 1 : 0;
+            blocks += chain;
+        }
+        return result;
+    }
+
+    private static boolean free(Set<Long> taken, World world, int x, int y, int z, boolean bypassTerrain) {
+        return y >= world.getMinHeight() && y < world.getMaxHeight() && !taken.contains(BlockKeys.of(x, y, z))
+                && (bypassTerrain || canHoldTrunk(world.getBlockAt(x, y, z)));
+    }
+
+    /** One link of a chain: facing the leaf it holds on, grown out so it grows no further, with berries by chance. */
+    private static BaseBlock hanging(TreeExtra extra, boolean tip, BlockFace towards, RandomGenerator random) {
+        BlockData data = (tip ? extra.tip : extra.body).createBlockData();
+        if (data instanceof MultipleFacing facing) {
+            facing.setFace(towards, true);
+        }
+        if (data instanceof CaveVinesPlant berries) {
+            berries.setBerries(random.nextDouble() < BERRIES);
+        }
+        if (data instanceof Ageable grown) {
+            grown.setAge(grown.getMaximumAge());
+        }
+        return BukkitAdapter.adapt(data).toBaseBlock();
     }
 
     /**
@@ -293,7 +374,7 @@ final class TreePaster {
 
     /** The leafy parts of a tree - leaves, moss, bushes and other plants - as against its wood. */
     static boolean foliage(Material material) {
-        return soft(material) || Tag.REPLACEABLE_BY_TREES.isTagged(material) || CLUMPS.contains(material);
+        return TreeExtra.hanging(material) || soft(material) || Tag.REPLACEABLE_BY_TREES.isTagged(material) || CLUMPS.contains(material);
     }
 
     /** Air, leaves, or a plant - the parts of a tree that give way, and what gives way to a tree. */
