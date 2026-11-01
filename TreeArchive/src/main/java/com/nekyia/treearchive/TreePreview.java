@@ -22,6 +22,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.concurrent.ThreadLocalRandom;
 import net.kyori.adventure.text.Component;
@@ -60,6 +61,7 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRegisterChannelEvent;
+import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
@@ -141,6 +143,8 @@ final class TreePreview implements Listener {
         final Map<Long, Set<Long>> byChunk = new ConcurrentHashMap<>();
         /** Whether its viewers heard it holds all the blocks it may. */
         boolean toldFull;
+        /** For one tree being tried out, where sneaking goes back to; null for a preview proper. */
+        @Nullable Consumer<Player> back;
         @Nullable BukkitTask task;
 
         Session(String key, PreviewSpec spec, long seed, UUID world, int x, int z, int radius,
@@ -203,7 +207,7 @@ final class TreePreview implements Listener {
     /** What a shared link needs to join this player's preview, or null without one. */
     @Nullable String shared(Player player) {
         Session session = watching.get(player.getUniqueId());
-        return session == null ? null : session.key;
+        return session == null || session.back != null ? null : session.key;
     }
 
     /** Takes a player out of their preview, putting back what the world really holds. */
@@ -349,6 +353,39 @@ final class TreePreview implements Listener {
                 }
             } while (System.nanoTime() < deadline);
         }, 1, 1);
+    }
+
+    /**
+     * Grows one tree for a player to look at, in that block, whatever stands in its way: no
+     * search for markers, and a hit on it takes nothing away. It replaces any preview they
+     * had. Sneaking on the ground takes it away again and goes {@code back}.
+     *
+     * @return whether it grew; no tree of the spec may be left to grow
+     */
+    boolean tryOut(Player player, PreviewSpec spec, Block at, Consumer<Player> back) {
+        clear(player);
+        Session session = new Session("try " + player.getUniqueId(), spec, newSeed(), at.getWorld().getUID(),
+                at.getX(), at.getZ(), 0, at.getY(), at.getY(), false, 1, true);
+        session.back = back;
+        sessions.put(session.key, session);
+        session.viewers.add(player.getUniqueId());
+        watch(player, session);
+        if (grow(session, at)) {
+            return true;
+        }
+        clear(player);
+        return false;
+    }
+
+    /** Back from a tree being tried out; in the air sneaking only means going down. */
+    @EventHandler
+    public void onSneak(PlayerToggleSneakEvent event) {
+        Player player = event.getPlayer();
+        Session session = watching.get(player.getUniqueId());
+        if (event.isSneaking() && !player.isFlying() && session != null && session.back != null) {
+            clear(player);
+            session.back.accept(player);
+        }
     }
 
     /**
@@ -588,7 +625,7 @@ final class TreePreview implements Listener {
         event.setCancelled(true);
         Long owner = session.owners.get(key);
         // Wood takes its marker away for real, for whoever hits it - this is a building server.
-        if (owner != null && !TreePaster.foliage(ghost.getMaterial())) {
+        if (owner != null && session.back == null && !TreePaster.foliage(ghost.getMaterial())) {
             Block marker = block.getWorld().getBlockAt(BlockKeys.x(owner), BlockKeys.y(owner), BlockKeys.z(owner));
             // Broken as the player would break it, so protections have their say: anyone may
             // choose the markers, and a marker may stand in someone else's build.

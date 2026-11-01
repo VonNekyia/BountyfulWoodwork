@@ -28,6 +28,7 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
+import org.bukkit.block.Block;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -56,6 +57,8 @@ final class PreviewMenu implements Listener {
     private static final int ADMIN_LIMIT = 5000;
     private static final int WIDE = 300;
     private static final int TAB = 100;
+    /** How far off a tree can be tried out, in blocks. */
+    private static final int TRY_REACH = 64;
     private static final int TYPE = 130;
     private static final int QUICK = 100;
     private static final ClickCallback.Options CLICKS = ClickCallback.Options.builder()
@@ -600,6 +603,10 @@ final class PreviewMenu implements Listener {
                         tree(who, markerIndex, index, each, null);
                     }));
         }
+        buttons.add(button(Component.text("Try it"), "Grows one such tree where you look, in place of any preview", TAB, (view, who) -> {
+            keep(view, tree, tab);
+            tryOut(who, markerIndex, index, tab);
+        }));
         if (tab == Tab.TREE) {
             buttons.add(button(Component.text(tree.word.isEmpty() ? "Which tree?" : tree.word), "Another type, or words", TAB, (view, who) -> {
                 keep(view, tree, tab);
@@ -651,7 +658,29 @@ final class PreviewMenu implements Listener {
                     } else {
                         marker(who, markerIndex, null);
                     }
-                }), 3));
+                }), 4));
+    }
+
+    /** One tree as it stands, on the block the player looks at or else stands over, until they sneak. */
+    private void tryOut(Player player, int markerIndex, int index, Tab tab) {
+        Tree tree = drafts.get(player.getUniqueId()).markers.get(markerIndex).trees.get(index);
+        if (tree.word.isEmpty()) {
+            tree(player, markerIndex, index, tab, "Choose a tree first.");
+            return;
+        }
+        Block target = player.getTargetBlockExact(TRY_REACH);
+        Block at = target != null ? target : player.getWorld().getHighestBlockAt(player.getLocation());
+        String part = at.getType().getKey().getKey() + ":" + written(tree, false);
+        if (!fits(part)) {
+            tree(player, markerIndex, index, tab, "There is nothing to grow it on here.");
+            return;
+        }
+        player.closeDialog();
+        if (preview.tryOut(player, PreviewSpec.parse(part), at, who -> tree(who, markerIndex, index, tab, null))) {
+            player.sendMessage(Component.text("Sneak on the ground to go back to the menu.", NamedTextColor.GREEN));
+        } else {
+            tree(player, markerIndex, index, tab, "No archived tree like that could grow.");
+        }
     }
 
     /** One group of what can hang on a tree: a slider each, 0 for none. */
