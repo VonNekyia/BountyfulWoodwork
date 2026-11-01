@@ -43,4 +43,20 @@ class PreviewMenuTest {
         assertFalse(PreviewMenu.fits("--at minecraft:the_nether,5000,5000"));
         assertFalse(PreviewMenu.fits("#abcdefgh"));
     }
+
+    /** The mix screen: what the client sends is read as typed, and a colour left alone stays exactly as it was. */
+    @Test
+    void mixingKeepsAColourLeftAlone() {
+        int rgb = 0x6c8fe8;
+        float[] hsb = java.awt.Color.RGBtoHSB(0x6c, 0x8f, 0xe8, null);
+        Float hue = (float) Math.round(hsb[0] * 360);
+        Float saturation = (float) Math.round(hsb[1] * 100);
+        Float brightness = (float) Math.round(hsb[2] * 100);
+        assertEquals(rgb, ColourPicker.mixed(hue, saturation, brightness, "#6c8fe8", rgb));
+        assertEquals(0x123456, ColourPicker.mixed(hue, saturation, brightness, "#123456", rgb));
+        assertEquals(rgb, ColourPicker.mixed(hue, saturation, brightness, "not a colour", rgb));
+        assertEquals(rgb, ColourPicker.mixed(null, Float.NaN, null, null, rgb));
+        assertEquals(0xff0000, ColourPicker.mixed(0f, 100f, 100f, "#6c8fe8", rgb));
+        assertEquals(0xffffff, ColourPicker.mixed(9999f, -5f, 9999f, "#6c8fe8", rgb));
+    }
 }

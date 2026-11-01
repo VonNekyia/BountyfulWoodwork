@@ -50,6 +50,15 @@ class LeafColoursTest {
     }
 
     @Test
+    void fadesRunFromFirstToLast() {
+        int[] stops = {0x000000, 0xffffff};
+        assertEquals(0x000000, LeafColours.fade(stops, 0));
+        assertEquals(0xffffff, LeafColours.fade(stops, 1));
+        assertEquals(0x808080, LeafColours.fade(stops, 0.5));
+        assertEquals(0x0000ff, LeafColours.fade(new int[] {0xff0000, 0x00ff00, 0x0000ff}, 1));
+    }
+
+    @Test
     void sameColoursSameBytes() {
         Map<Integer, Look> backwards = new LinkedHashMap<>();
         PLAIN.entrySet().stream().sorted(Map.Entry.<Integer, Look>comparingByKey().reversed())

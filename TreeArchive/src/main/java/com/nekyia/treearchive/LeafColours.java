@@ -84,9 +84,7 @@ final class LeafColours {
                         ? Math.hypot(x + 0.5 - crown.middleX(), z + 0.5 - crown.middleZ()) / Math.max(crown.radius(), 1)
                         : (y - crown.bottom()) / (double) Math.max(crown.top() - crown.bottom(), 1);
                 share = Math.round(Math.clamp(share, 0, 1) * FADE_STEPS) / (double) FADE_STEPS;
-                double at = share * (stops.length - 1);
-                int from = Math.min((int) at, stops.length - 2);
-                colour = mix(stops[from], stops[from + 1], at - from);
+                colour = fade(stops, share);
             }
             // Which leaves bloom hangs on their place alone: the same in a preview, the
             // tree placed and the colours its chunk keeps.
@@ -94,16 +92,24 @@ final class LeafColours {
             return new Look(colour | (bright ? BRIGHT : 0), secondary, blooms ? blossom : 0);
         }
 
-        /** Between two colours, channel by channel. */
-        private static int mix(int from, int to, double share) {
-            int colour = 0;
-            for (int shift = 0; shift <= 16; shift += 8) {
-                int a = from >> shift & 255;
-                int b = to >> shift & 255;
-                colour |= (int) Math.round(a + (b - a) * share) << shift;
-            }
-            return colour;
+    }
+
+    /** A fade's colour at {@code share} of the way, from 0 for its first colour to 1 for its last. */
+    static int fade(int[] stops, double share) {
+        double at = share * (stops.length - 1);
+        int from = Math.min((int) at, stops.length - 2);
+        return mix(stops[from], stops[from + 1], at - from);
+    }
+
+    /** Between two colours, channel by channel. */
+    private static int mix(int from, int to, double share) {
+        int colour = 0;
+        for (int shift = 0; shift <= 16; shift += 8) {
+            int a = from >> shift & 255;
+            int b = to >> shift & 255;
+            colour |= (int) Math.round(a + (b - a) * share) << shift;
         }
+        return colour;
     }
 
     /** How far a tree's leaves reach, which a fade is spread over. */

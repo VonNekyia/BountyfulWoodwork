@@ -38,7 +38,7 @@ import org.jspecify.annotations.Nullable;
  * preview is put together marker block by marker block, each with its trees - a type, a
  * size, a creator or a name - their shares, their leaf colours from the player's own
  * colours, bright or fading outwards, a secondary colour, blossoms and how many, and
- * mistletoe of a strength. It is shown right
+ * mistletoe of a strength; colours are picked in the {@link ColourPicker}. It is shown right
  * away, or kept as a preset: on the player's own shelf, or in a namespace everyone can
  * use and only those with treearchive.namespaces change. What the menu makes is written
  * the way /ta preview reads it, so presets, hashes and shared links work as before.
@@ -53,17 +53,32 @@ final class PreviewMenu implements Listener {
     /** The most trees an admin can set in the menu; more is still a command away. */
     private static final int ADMIN_LIMIT = 5000;
     private static final int WIDE = 300;
+    private static final int TAB = 100;
     private static final ClickCallback.Options CLICKS = ClickCallback.Options.builder()
             .uses(ClickCallback.UNLIMITED_USES).lifetime(Duration.ofMinutes(30)).build();
     private static final String NONE = "none";
     private static final String WRITTEN = "written";
-    private static final String AS_IT_WAS = "as_it_was";
     /** Names of presets, namespaces and colours. */
-    private static final String NAME = "[a-z0-9_-]{1,32}";
+    static final String NAME = "[a-z0-9_-]{1,32}";
     /** How much one player keeps and puts together, so no one fills the server's files. */
-    private static final int MAX_KEPT = 64;
+    static final int MAX_KEPT = 64;
     private static final int MAX_MARKERS = 32;
     private static final int MAX_TREES = 16;
+
+    /** The tabs of a tree's screen: a few inputs at a time, as a dialog has no headings between them. */
+    private enum Tab {
+        TREE("Tree", "What grows here, and how often"),
+        LEAVES("Leaves", "Colours and blossoms"),
+        EXTRAS("Extras", "What hangs in the crown");
+
+        final String label;
+        final String tooltip;
+
+        Tab(String label, String tooltip) {
+            this.label = label;
+            this.tooltip = tooltip;
+        }
+    }
 
     /** One tree of a marker block: what it is, its share among the block's trees, its paint and mistletoe. */
     private static final class Tree {
@@ -111,6 +126,7 @@ final class PreviewMenu implements Listener {
     /** Shows a preview from its parts, as a preset keeps them. */
     private final BiConsumer<Player, List<String>> show;
     private final Map<UUID, Draft> drafts = new HashMap<>();
+    private final ColourPicker picker;
 
     PreviewMenu(JavaPlugin plugin, PreviewLibrary library, TreeArchive archive, TreePreview preview,
                 BiConsumer<Player, List<String>> show) {
@@ -119,6 +135,7 @@ final class PreviewMenu implements Listener {
         this.archive = archive;
         this.preview = preview;
         this.show = show;
+        this.picker = new ColourPicker(this, library);
         plugin.getServer().getPluginManager().registerEvents(this, plugin);
     }
 
@@ -129,6 +146,15 @@ final class PreviewMenu implements Listener {
 
     void open(Player player) {
         main(player, null);
+    }
+
+    /** Back to where the player was: the draft if there is one, else the start. */
+    void home(Player player) {
+        if (drafts.containsKey(player.getUniqueId())) {
+            editor(player, null);
+        } else {
+            main(player, null);
+        }
     }
 
     // ---- screens --------------------------------------------------------------------
@@ -145,7 +171,7 @@ final class PreviewMenu implements Listener {
         }
         buttons.add(button("My presets", "Previews you kept", who -> presets(who, PreviewLibrary.Shelf.of(uuid), null)));
         buttons.add(button("Namespaces", "Presets everyone shares", who -> namespaces(who, null)));
-        buttons.add(button("My colours", "Colours and fades to paint leaves with", who -> colours(who, null)));
+        buttons.add(button("My colours", "Colours and fades to paint leaves with", who -> picker.manage(who, null)));
         if (preview.shared(player) != null) {
             buttons.add(button("Hide the preview", "Takes the trees away again", who -> {
                 preview.clear(who);
@@ -319,9 +345,9 @@ final class PreviewMenu implements Listener {
         List<ActionButton> buttons = new ArrayList<>();
         for (int i = 0; i < marker.trees.size(); i++) {
             int tree = i;
-            buttons.add(button(marker.trees.get(i).word, null, (view, who) -> {
+            buttons.add(button(marker.trees.get(i).word.isEmpty() ? "(no tree yet)" : marker.trees.get(i).word, null, (view, who) -> {
                 marker.blocks = blocks(view);
-                tree(who, index, tree, null);
+                tree(who, index, tree, Tab.TREE, null);
             }));
         }
         buttons.add(button("Add a tree", "Without any, the block grows every archived tree", (view, who) -> {
@@ -331,7 +357,7 @@ final class PreviewMenu implements Listener {
                 return;
             }
             marker.trees.add(new Tree());
-            tree(who, index, marker.trees.size() - 1, null);
+            tree(who, index, marker.trees.size() - 1, Tab.TREE, null);
         }));
         buttons.add(button("Remove the block", null, who -> {
             draft.markers.remove(marker);
@@ -358,8 +384,8 @@ final class PreviewMenu implements Listener {
         })));
     }
 
-    /** One tree of a marker block. */
-    private void tree(Player player, int markerIndex, int index, @Nullable String note) {
+    /** One tree of a marker block, a tab at a time; every click keeps what the tab says. */
+    private void tree(Player player, int markerIndex, int index, Tab tab, @Nullable String note) {
         Draft draft = drafts.get(player.getUniqueId());
         if (draft == null || markerIndex >= draft.markers.size()
                 || index >= draft.markers.get(markerIndex).trees.size()) {
@@ -368,99 +394,122 @@ final class PreviewMenu implements Listener {
         }
         Marker marker = draft.markers.get(markerIndex);
         Tree tree = marker.trees.get(index);
-        Map<String, String> colours = library.colours(player.getUniqueId());
 
-        List<SingleOptionDialogInput.OptionEntry> types = new ArrayList<>();
-        boolean typed = archive.types().contains(tree.word);
-        types.add(SingleOptionDialogInput.OptionEntry.create(WRITTEN, Component.text("As written below"), !typed));
-        for (String type : archive.types()) {
-            types.add(SingleOptionDialogInput.OptionEntry.create(type, Component.text(type), type.equals(tree.word)));
+        List<ActionButton> buttons = new ArrayList<>();
+        for (Tab each : Tab.values()) {
+            buttons.add(button(each == tab ? Component.text("> " + each.label + " <", NamedTextColor.GOLD)
+                    : Component.text(each.label), each.tooltip, TAB, (view, who) -> {
+                        keep(view, tree, tab);
+                        tree(who, markerIndex, index, each, null);
+                    }));
         }
-        String current = tree.colours == null ? null : hex(tree.colours);
-        String chosen = current == null ? NONE : colours.entrySet().stream()
-                .filter(colour -> colour.getValue().equalsIgnoreCase(current)).map(Map.Entry::getKey)
-                .findFirst().orElse(AS_IT_WAS);
-        List<SingleOptionDialogInput.OptionEntry> paints = new ArrayList<>();
-        paints.add(SingleOptionDialogInput.OptionEntry.create(NONE, Component.text("Its own leaf colours"),
-                chosen.equals(NONE)));
-        if (chosen.equals(AS_IT_WAS)) {
-            paints.add(SingleOptionDialogInput.OptionEntry.create(AS_IT_WAS,
-                    swatch(Objects.requireNonNull(tree.colours)).append(Component.text(" as it was")), true));
+        if (tab == Tab.TREE) {
+            buttons.add(button(Component.text("Remove"), "Takes this tree off the block", TAB, who -> {
+                marker.trees.remove(tree);
+                marker(who, markerIndex, null);
+            }));
         }
-        colours.forEach((name, written) -> {
-            int[] stops = TreeSelection.colours(written);
-            if (stops != null) {
-                paints.add(SingleOptionDialogInput.OptionEntry.create("c_" + name,
-                        swatch(stops).append(Component.text(" " + name)), chosen.equals(name)));
-            }
-        });
-        List<DialogInput> inputs = List.of(
-                DialogInput.singleOption("type", Component.text("Tree type"), types).width(WIDE).build(),
-                DialogInput.text("word", Component.text("... or words: a type, size, creator or name"))
-                        .initial(typed ? "" : tree.word).maxLength(100).width(WIDE).build(),
-                DialogInput.numberRange("share", Component.text("Share among the block's trees"), 1, 100)
-                        .step(1f).initial((float) tree.share).width(WIDE).build(),
-                DialogInput.singleOption("paint", Component.text("Leaf colour"), paints).width(WIDE).build(),
-                DialogInput.bool("bright", Component.text("Bright - on a lighter leaf texture")).initial(tree.bright).build(),
-                DialogInput.bool("out", Component.text("Fade from the middle outwards, not upwards"))
-                        .initial(tree.out).build(),
-                DialogInput.singleOption("second", Component.text("Secondary colour, on some leaves of each block"),
-                        colourOptions(colours, tree.secondary)).width(WIDE).build(),
-                DialogInput.singleOption("blossom", Component.text("Blossoms"), colourOptions(colours, tree.blossom))
-                        .width(WIDE).build(),
-                DialogInput.numberRange("bloom", Component.text("Leaves in blossom, %"), 1, 100)
-                        .step(1f).initial((float) tree.bloom).width(WIDE).build(),
-                DialogInput.singleOption("mistle", Component.text("Mistletoe"), List.of(
-                        SingleOptionDialogInput.OptionEntry.create(NONE, Component.text("None"), tree.mistle.equals(NONE)),
-                        SingleOptionDialogInput.OptionEntry.create("mistle", Component.text("Moss with bushes"),
-                                tree.mistle.equals("mistle")),
-                        SingleOptionDialogInput.OptionEntry.create("drymistle",
-                                Component.text("Dry - mangrove roots with dry grass"), tree.mistle.equals("drymistle"))))
-                        .width(WIDE).build(),
-                DialogInput.numberRange("strength", Component.text("Mistletoe in place of leaves, %"), 1, 100)
-                        .step(1f).initial((float) tree.strength).width(WIDE).build());
-
-        List<ActionButton> buttons = List.of(
-                button("Remove the tree", null, who -> {
-                    marker.trees.remove(tree);
-                    marker(who, markerIndex, null);
-                }),
-                button("Paint with a new colour", "Make one under My colours first", who -> colours(who, null)));
-        player.showDialog(dialog("Tree", lines(note, colours.isEmpty()
-                        ? "Colours to paint with come from My colours; you have none yet." : null),
-                inputs, buttons, button("Done", null, (view, who) -> {
-                    String type = Objects.requireNonNullElse(view.getText("type"), WRITTEN);
-                    String written = (type.equals(WRITTEN) ? Objects.requireNonNullElse(view.getText("word"), "") : type)
-                            .toLowerCase(Locale.ROOT).replaceAll("[\\s,/:*&%]", "");
-                    String word = written.substring(0, Math.min(written.length(), 100));
-                    long matching = archive.entries().stream().filter(entry -> TreeArchive.matches(entry, word)).count();
-                    if (word.isEmpty() || matching == 0) {
-                        tree(who, markerIndex, index, word.isEmpty() ? "Choose a tree type or write words."
-                                : "No archived tree matches '" + word + "'.");
+        if (tab == Tab.LEAVES) {
+            Consumer<Player> back = who -> tree(who, markerIndex, index, Tab.LEAVES, null);
+            buttons.add(paint("Leaf colour", tree.colours, tree, new ColourPicker.Target("Leaf colour", () -> tree.colours,
+                    stops -> tree.colours = stops, back, true, true)));
+            buttons.add(paint("Secondary", single(tree.secondary), tree, new ColourPicker.Target("Secondary colour",
+                    () -> single(tree.secondary), stops -> tree.secondary = stops == null ? 0 : stops[0] | LeafColours.PRESENT,
+                    back, false, true)));
+            buttons.add(paint("Blossoms", single(tree.blossom), tree, new ColourPicker.Target("Blossom colour",
+                    () -> single(tree.blossom), stops -> tree.blossom = stops == null ? 0 : stops[0] | LeafColours.PRESENT,
+                    back, false, true)));
+        }
+        List<DialogBody> body = new ArrayList<>(lines(note, null));
+        body.add(DialogBody.plainMessage(tree.word.isEmpty() ? Component.text("No tree chosen yet.")
+                : describe(tree, marker.trees), WIDE));
+        player.showDialog(dialog("Tree on " + marker.blocks, body, inputs(tree, tab), buttons,
+                button("Done", null, (view, who) -> {
+                    keep(view, tree, tab);
+                    long matching = archive.entries().stream().filter(entry -> TreeArchive.matches(entry, tree.word)).count();
+                    if (tree.word.isEmpty() || matching == 0) {
+                        tree(who, markerIndex, index, Tab.TREE, tree.word.isEmpty() ? "Choose a tree type or write words."
+                                : "No archived tree matches '" + tree.word + "'.");
                         return;
                     }
-                    tree.word = word;
-                    tree.share = percent(view.getFloat("share"), 1);
-                    String paint = Objects.requireNonNullElse(view.getText("paint"), NONE);
-                    if (paint.equals(NONE)) {
-                        tree.colours = null;
-                    } else if (paint.startsWith("c_")) {
-                        tree.colours = TreeSelection.colours(colours.getOrDefault(paint.substring(2), ""));
-                    }
-                    tree.bright = Boolean.TRUE.equals(view.getBoolean("bright"));
-                    tree.out = Boolean.TRUE.equals(view.getBoolean("out"));
-                    tree.secondary = chosenColour(view.getText("second"), colours, tree.secondary);
-                    tree.blossom = chosenColour(view.getText("blossom"), colours, tree.blossom);
-                    tree.bloom = percent(view.getFloat("bloom"), TreeSelection.BLOOM);
-                    // Only the options there are: the rest would go into the preview's command line.
-                    String mistle = view.getText("mistle");
-                    tree.mistle = "mistle".equals(mistle) || "drymistle".equals(mistle) ? mistle : NONE;
-                    tree.strength = percent(view.getFloat("strength"), TreePaster.MISTLE_STRENGTH);
                     marker(who, markerIndex, tree.colours == null
                             && (tree.bright || tree.out || tree.secondary != 0 || tree.blossom != 0)
                             ? "Bright, the outward fade, the secondary colour and blossoms only go with a leaf colour."
                             : null);
-                })));
+                }), 3));
+    }
+
+    /** A button naming a colour of the tree and showing it, keeping the tab's inputs on the way to the picker. */
+    private ActionButton paint(String label, int @Nullable [] colours, Tree tree, ColourPicker.Target target) {
+        Component shown = colours == null ? Component.text(label)
+                : Component.text(label + " ").append(swatch(colours));
+        return button(shown, "Pick it", TAB, (view, who) -> {
+            keep(view, tree, Tab.LEAVES);
+            picker.open(who, target);
+        });
+    }
+
+    private static int @Nullable [] single(int colour) {
+        return colour == 0 ? null : new int[] {colour & 0xFFFFFF};
+    }
+
+    /** What a tab asks. */
+    private List<DialogInput> inputs(Tree tree, Tab tab) {
+        return switch (tab) {
+            case TREE -> {
+                boolean typed = archive.types().contains(tree.word);
+                List<SingleOptionDialogInput.OptionEntry> types = new ArrayList<>();
+                types.add(SingleOptionDialogInput.OptionEntry.create(WRITTEN, Component.text("As written below"), !typed));
+                for (String type : archive.types()) {
+                    types.add(SingleOptionDialogInput.OptionEntry.create(type, Component.text(type), type.equals(tree.word)));
+                }
+                yield List.of(
+                        DialogInput.singleOption("type", Component.text("Tree type"), types).width(WIDE).build(),
+                        DialogInput.text("word", Component.text("... or words: a type, size, creator or name"))
+                                .initial(typed ? "" : tree.word).maxLength(100).width(WIDE).build(),
+                        DialogInput.numberRange("share", Component.text("Share among the block's trees"), 1, 100)
+                                .step(1f).initial((float) tree.share).width(WIDE).build());
+            }
+            case LEAVES -> List.of(
+                    DialogInput.bool("bright", Component.text("Bright - on a lighter leaf texture")).initial(tree.bright).build(),
+                    DialogInput.bool("out", Component.text("Fade from the middle outwards, not upwards"))
+                            .initial(tree.out).build(),
+                    DialogInput.numberRange("bloom", Component.text("Leaves in blossom, %"), 1, 100)
+                            .step(1f).initial((float) tree.bloom).width(WIDE).build());
+            case EXTRAS -> List.of(
+                    DialogInput.singleOption("mistle", Component.text("Mistletoe"), List.of(
+                            SingleOptionDialogInput.OptionEntry.create(NONE, Component.text("None"), tree.mistle.equals(NONE)),
+                            SingleOptionDialogInput.OptionEntry.create("mistle", Component.text("Moss with bushes"),
+                                    tree.mistle.equals("mistle")),
+                            SingleOptionDialogInput.OptionEntry.create("drymistle",
+                                    Component.text("Dry - mangrove roots with dry grass"), tree.mistle.equals("drymistle"))))
+                            .width(WIDE).build(),
+                    DialogInput.numberRange("strength", Component.text("Mistletoe in place of leaves, %"), 1, 100)
+                            .step(1f).initial((float) tree.strength).width(WIDE).build());
+        };
+    }
+
+    /** Reads a tab back, as the client's word only: the rest would go into the preview's command line. */
+    private static void keep(DialogResponseView view, Tree tree, Tab tab) {
+        switch (tab) {
+            case TREE -> {
+                String type = Objects.requireNonNullElse(view.getText("type"), WRITTEN);
+                String written = (type.equals(WRITTEN) ? Objects.requireNonNullElse(view.getText("word"), "") : type)
+                        .toLowerCase(Locale.ROOT).replaceAll("[\\s,/:*&%]", "");
+                tree.word = written.substring(0, Math.min(written.length(), 100));
+                tree.share = percent(view.getFloat("share"), 1);
+            }
+            case LEAVES -> {
+                tree.bright = Boolean.TRUE.equals(view.getBoolean("bright"));
+                tree.out = Boolean.TRUE.equals(view.getBoolean("out"));
+                tree.bloom = percent(view.getFloat("bloom"), TreeSelection.BLOOM);
+            }
+            case EXTRAS -> {
+                String mistle = view.getText("mistle");
+                tree.mistle = "mistle".equals(mistle) || "drymistle".equals(mistle) ? mistle : NONE;
+                tree.strength = percent(view.getFloat("strength"), TreePaster.MISTLE_STRENGTH);
+            }
+        }
     }
 
     private void saveAs(Player player, @Nullable String note) {
@@ -502,91 +551,6 @@ final class PreviewMenu implements Listener {
         draft.shelf = shelf;
         draft.name = name;
         editor(player, "Saved as " + name + " in " + where(shelf) + ".");
-    }
-
-    private void colours(Player player, @Nullable String note) {
-        List<ActionButton> buttons = new ArrayList<>();
-        library.colours(player.getUniqueId()).forEach((name, written) -> {
-            int[] stops = TreeSelection.colours(written);
-            Component label = stops == null ? Component.text(name) : swatch(stops).append(Component.text(" " + name));
-            buttons.add(ActionButton.builder(label).tooltip(Component.text(written)).width(150)
-                    .action(action(who -> colour(who, name, null))).build());
-        });
-        buttons.add(button("New colour", "One colour, or a fade over two or three", who -> colour(who, null, null)));
-        player.showDialog(dialog("My colours", lines(note, "Colours you paint trees with, in the tree's menu."),
-                List.of(), buttons, button("Back", null, who -> {
-                    if (drafts.containsKey(who.getUniqueId())) {
-                        editor(who, null);
-                    } else {
-                        main(who, null);
-                    }
-                })));
-    }
-
-    /** A colour, new or kept: a name, and one to three colours - more than one fade into each other. */
-    private void colour(Player player, @Nullable String name, @Nullable String note) {
-        String kept = name == null ? null : library.colours(player.getUniqueId()).get(name);
-        int[] stops = kept == null ? null : TreeSelection.colours(kept);
-        int[] shown = stops == null ? new int[] {0x6b8e23} : stops;
-        List<DialogInput> inputs = new ArrayList<>();
-        inputs.add(DialogInput.text("name", Component.text("Name")).initial(name == null ? "" : name).maxLength(40)
-                .width(WIDE).build());
-        inputs.add(DialogInput.singleOption("count", Component.text("Colours"), List.of(
-                SingleOptionDialogInput.OptionEntry.create("1", Component.text("One colour"), shown.length == 1),
-                SingleOptionDialogInput.OptionEntry.create("2", Component.text("A fade over two"), shown.length == 2),
-                SingleOptionDialogInput.OptionEntry.create("3", Component.text("A fade over three"), shown.length >= 3)))
-                .width(WIDE).build());
-        String[] channels = {"Red", "Green", "Blue"};
-        for (int stop = 0; stop < 3; stop++) {
-            int rgb = shown[Math.min(stop, shown.length - 1)];
-            for (int channel = 0; channel < 3; channel++) {
-                inputs.add(DialogInput.numberRange("c" + stop + channel, Component.text(
-                                (stop == 0 ? "First" : stop == 1 ? "Second" : "Third") + " colour: " + channels[channel]),
-                        0, 255).step(1f).initial((float) (rgb >> (16 - 8 * channel) & 255)).width(WIDE).build());
-            }
-        }
-        List<ActionButton> buttons = new ArrayList<>();
-        buttons.add(button("Save", "Keeps the colour; save again to see it", (view, who) -> {
-            String newName = Objects.requireNonNullElse(view.getText("name"), "").trim().toLowerCase(Locale.ROOT);
-            Map<String, String> own = library.colours(who.getUniqueId());
-            if (!newName.matches(NAME)) {
-                colour(who, name, "Name it with up to 32 letters, digits, _ and -.");
-                return;
-            }
-            if (!own.containsKey(newName) && own.size() >= MAX_KEPT) {
-                colour(who, name, MAX_KEPT + " colours are the most; delete one first.");
-                return;
-            }
-            int count = switch (Objects.requireNonNullElse(view.getText("count"), "1")) {
-                case "2" -> 2;
-                case "3" -> 3;
-                default -> 1;
-            };
-            int[] made = new int[count];
-            for (int stop = 0; stop < count; stop++) {
-                for (int channel = 0; channel < 3; channel++) {
-                    int value = Math.round(Objects.requireNonNullElse(view.getFloat("c" + stop + channel), 0f));
-                    made[stop] |= Math.clamp(value, 0, 255) << (16 - 8 * channel);
-                }
-            }
-            if (name != null && !name.equals(newName)) {
-                library.colour(who.getUniqueId(), name, null);
-            }
-            library.colour(who.getUniqueId(), newName, hex(made));
-            colour(who, newName, "Saved.");
-        }));
-        if (kept != null) {
-            buttons.add(button("Delete", null, who -> {
-                library.colour(who.getUniqueId(), Objects.requireNonNull(name), null);
-                colours(who, "Deleted " + name + ".");
-            }));
-        }
-        List<DialogBody> body = new ArrayList<>(lines(note, null));
-        if (stops != null) {
-            body.add(DialogBody.plainMessage(swatch(stops).append(Component.text(" " + kept)), WIDE));
-        }
-        player.showDialog(dialog(name == null ? "New colour" : "Colour " + name, body, inputs, buttons,
-                button("Back", null, who -> colours(who, null))));
     }
 
     private void confirm(Player player, String question, Runnable yes, Runnable no) {
@@ -690,8 +654,10 @@ final class PreviewMenu implements Listener {
             if (marker.blocks.isEmpty()) {
                 continue;
             }
-            boolean shares = marker.trees.stream().mapToInt(tree -> tree.share).distinct().count() > 1;
-            parts.add(marker.blocks + (marker.trees.isEmpty() ? "" : ":" + marker.trees.stream()
+            // A tree added but not chosen yet is nothing to keep.
+            List<Tree> trees = marker.trees.stream().filter(tree -> !tree.word.isEmpty()).toList();
+            boolean shares = trees.stream().mapToInt(tree -> tree.share).distinct().count() > 1;
+            parts.add(marker.blocks + (trees.isEmpty() ? "" : ":" + trees.stream()
                     .map(tree -> written(tree, shares)).collect(Collectors.joining(","))));
         }
         if (draft.limit > 0) {
@@ -784,36 +750,6 @@ final class PreviewMenu implements Listener {
 
     // ---- helpers ----------------------------------------------------------------------
 
-    /** One colour to choose: none, one of the player's own - a fade gives its first - or the one it had. */
-    private static List<SingleOptionDialogInput.OptionEntry> colourOptions(Map<String, String> colours, int current) {
-        List<SingleOptionDialogInput.OptionEntry> options = new ArrayList<>();
-        options.add(SingleOptionDialogInput.OptionEntry.create(NONE, Component.text("None"), current == 0));
-        boolean found = current == 0;
-        for (Map.Entry<String, String> colour : colours.entrySet()) {
-            int[] stops = TreeSelection.colours(colour.getValue());
-            if (stops != null) {
-                boolean chosen = !found && (stops[0] | LeafColours.PRESENT) == current;
-                found |= chosen;
-                options.add(SingleOptionDialogInput.OptionEntry.create("c_" + colour.getKey(),
-                        swatch(new int[] {stops[0]}).append(Component.text(" " + colour.getKey())), chosen));
-            }
-        }
-        if (!found) {
-            options.add(1, SingleOptionDialogInput.OptionEntry.create(AS_IT_WAS,
-                    swatch(new int[] {current}).append(Component.text(" as it was")), true));
-        }
-        return options;
-    }
-
-    /** The colour chosen among {@link #colourOptions}, PRESENT set, or 0 for none. */
-    private static int chosenColour(@Nullable String chosen, Map<String, String> colours, int current) {
-        if (chosen == null || chosen.equals(AS_IT_WAS)) {
-            return current;
-        }
-        int[] stops = chosen.startsWith("c_") ? TreeSelection.colours(colours.getOrDefault(chosen.substring(2), "")) : null;
-        return stops == null ? 0 : stops[0] | LeafColours.PRESENT;
-    }
-
     private boolean canChange(Player player, PreviewLibrary.Shelf shelf) {
         return shelf.player() != null ? shelf.player().equals(player.getUniqueId()) : player.hasPermission(NAMESPACES);
     }
@@ -832,13 +768,13 @@ final class PreviewMenu implements Listener {
         return player.hasPermission(TreeBrush.PERMISSION) ? Math.max(ADMIN_LIMIT, maxTrees()) : maxTrees();
     }
 
-    private static String hex(int[] colours) {
+    static String hex(int[] colours) {
         return Arrays.stream(colours).mapToObj(colour -> String.format("#%06x", colour & 0xFFFFFF))
                 .collect(Collectors.joining(">"));
     }
 
     /** A square per colour, in that colour. */
-    private static Component swatch(int[] colours) {
+    static Component swatch(int[] colours) {
         TextComponent.Builder swatch = Component.text();
         for (int colour : colours) {
             swatch.append(Component.text("\u2588", TextColor.color(colour & 0xFFFFFF)));
@@ -847,7 +783,7 @@ final class PreviewMenu implements Listener {
     }
 
     /** A note in red over the screen's own line, either of them left out when null. */
-    private static List<DialogBody> lines(@Nullable String note, @Nullable String line) {
+    static List<DialogBody> lines(@Nullable String note, @Nullable String line) {
         List<DialogBody> lines = new ArrayList<>();
         if (note != null) {
             lines.add(DialogBody.plainMessage(Component.text(note, NamedTextColor.YELLOW), WIDE));
@@ -860,21 +796,34 @@ final class PreviewMenu implements Listener {
 
     private static Dialog dialog(String title, List<DialogBody> body, List<DialogInput> inputs,
                                  List<ActionButton> buttons, @Nullable ActionButton exit) {
+        return dialog(title, body, inputs, buttons, exit, 2);
+    }
+
+    static Dialog dialog(String title, List<DialogBody> body, List<DialogInput> inputs,
+                         List<ActionButton> buttons, @Nullable ActionButton exit, int columns) {
         DialogType type = buttons.isEmpty() && exit != null
                 ? DialogType.notice(exit)
-                : exit == null ? DialogType.multiAction(buttons).columns(2).build()
-                        : DialogType.multiAction(buttons).columns(2).exitAction(exit).build();
+                : exit == null ? DialogType.multiAction(buttons).columns(columns).build()
+                        : DialogType.multiAction(buttons).columns(columns).exitAction(exit).build();
         return Dialog.create(factory -> factory.empty()
                 .base(DialogBase.builder(Component.text(title)).body(body).inputs(inputs).build())
                 .type(type));
     }
 
-    private ActionButton button(String label, @Nullable String tooltip, Consumer<Player> action) {
+    ActionButton button(String label, @Nullable String tooltip, Consumer<Player> action) {
         return button(label, tooltip, (view, player) -> action.accept(player));
     }
 
-    private ActionButton button(String label, @Nullable String tooltip, BiConsumer<DialogResponseView, Player> action) {
-        ActionButton.Builder button = ActionButton.builder(Component.text(label)).width(150).action(action(action));
+    ActionButton button(String label, @Nullable String tooltip, BiConsumer<DialogResponseView, Player> action) {
+        return button(Component.text(label), tooltip, 150, action);
+    }
+
+    ActionButton button(Component label, @Nullable String tooltip, int width, Consumer<Player> action) {
+        return button(label, tooltip, width, (view, player) -> action.accept(player));
+    }
+
+    ActionButton button(Component label, @Nullable String tooltip, int width, BiConsumer<DialogResponseView, Player> action) {
+        ActionButton.Builder button = ActionButton.builder(label).width(width).action(action(action));
         if (tooltip != null) {
             button.tooltip(Component.text(tooltip));
         }
