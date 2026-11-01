@@ -55,7 +55,9 @@ final class PreviewMenu implements Listener {
     private static final int WIDE = 300;
     private static final int TAB = 100;
     private static final ClickCallback.Options CLICKS = ClickCallback.Options.builder()
-            .uses(ClickCallback.UNLIMITED_USES).lifetime(Duration.ofMinutes(30)).build();
+            .uses(ClickCallback.UNLIMITED_USES).lifetime(Duration.ofMinutes(10)).build();
+    /** Clicks closer together than this are dropped, in nanoseconds: nobody clicks that fast by hand. */
+    private static final long CLICK_GAP = 100_000_000L;
     private static final String NONE = "none";
     private static final String WRITTEN = "written";
     /** Names of presets, namespaces and colours. */
@@ -126,6 +128,12 @@ final class PreviewMenu implements Listener {
     /** Shows a preview from its parts, as a preset keeps them. */
     private final BiConsumer<Player, List<String>> show;
     private final Map<UUID, Draft> drafts = new HashMap<>();
+    /**
+     * When each player last clicked. Every screen registers a callback per button, kept
+     * until it runs out, so a changed client clicking as fast as it can would pile up
+     * millions of them, each holding its draft.
+     */
+    private final Map<UUID, Long> lastClick = new HashMap<>();
     private final ColourPicker picker;
 
     PreviewMenu(JavaPlugin plugin, PreviewLibrary library, TreeArchive archive, TreePreview preview,
@@ -142,6 +150,7 @@ final class PreviewMenu implements Listener {
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         drafts.remove(event.getPlayer().getUniqueId());
+        lastClick.remove(event.getPlayer().getUniqueId());
     }
 
     void open(Player player) {
@@ -839,7 +848,13 @@ final class PreviewMenu implements Listener {
         return DialogAction.customClick((view, audience) -> {
             if (audience instanceof Player player) {
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
-                    if (player.isOnline()) {
+                    // Online first: a click still queued after quitting must not leave an entry behind.
+                    if (!player.isOnline()) {
+                        return;
+                    }
+                    long now = System.nanoTime();
+                    Long last = lastClick.put(player.getUniqueId(), now);
+                    if (last == null || now - last >= CLICK_GAP) {
                         action.accept(view, player);
                     }
                 });
