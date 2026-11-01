@@ -698,7 +698,8 @@ final class PreviewMenu implements Listener {
             inputs.add(DialogInput.numberRange(extra.modifier(), Component.text(extra.label() + ", %"), 0, extra.top()).step(1f)
                     .initial((float) Math.min(tree.extras.getOrDefault(extra.modifier(), 0), extra.top())).width(WIDE).build());
         }
-        player.showDialog(dialog(group, lines(null, "Share of the leaves; 0 for none."), inputs, List.of(), button("Done", null, (view, who) -> {
+        player.showDialog(dialog(group, lines(null, group.equals("Hanging")
+                ? "Share of the crown's edge, each on a twig; 0 for none." : "Share of the leaves; 0 for none."), inputs, List.of(), button("Done", null, (view, who) -> {
             for (Extra extra : extras) {
                 Float value = view.getFloat(extra.modifier());
                 if (value != null && !value.isNaN()) {

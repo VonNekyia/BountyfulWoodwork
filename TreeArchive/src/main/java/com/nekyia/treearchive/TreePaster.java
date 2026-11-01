@@ -258,19 +258,37 @@ final class TreePaster {
      * preview hangs the same: a chain of a random length from a free side of the leaf, which
      * ends at the first spot taken or firm - anywhere with {@code bypassTerrain}, within the
      * world. At most {@link TreeExtra#MOST_BLOCKS} blocks to a tree.
+     * What leaves cannot hold grows from the crown's edge, where it shows and hides what it
+     * holds on to: its leaf turns into a twig of the tree's own wood, so it stays by the
+     * game's own rules. A tree without wood gets none of it.
      */
     private List<Placement> hang(List<Placement> placements, TreeExtra extra, double share, World world,
                                  RandomGenerator random, boolean bypassTerrain) {
+        BlockFace along = extra.grows == TreeExtra.Grows.UP ? BlockFace.UP : BlockFace.DOWN;
+        boolean onTwigs = extra.grows != TreeExtra.Grows.SIDE;
         Set<Long> taken = new HashSet<>();
         List<Placement> leaves = new ArrayList<>();
+        // How far along each column the tree reaches; y counted the way the kind grows.
+        Map<Long, Integer> edge = new HashMap<>();
+        BaseBlock wood = null;
         for (Placement placement : placements) {
             taken.add(BlockKeys.of(placement.x(), placement.y(), placement.z()));
-            if (Tag.LEAVES.isTagged(BukkitAdapter.adapt(placement.block().getBlockType()))) {
+            edge.merge(BlockKeys.of(placement.x(), 0, placement.z()), placement.y() * along.getModY(), Math::max);
+            Material material = BukkitAdapter.adapt(placement.block().getBlockType());
+            if (Tag.LEAVES.isTagged(material)) {
                 leaves.add(placement);
+            } else if (wood == null && Tag.LOGS.isTagged(material)) {
+                wood = placement.block();
             }
         }
+        if (onTwigs) {
+            if (wood == null) {
+                return placements;
+            }
+            leaves.removeIf(leaf -> leaf.y() * along.getModY() != edge.get(BlockKeys.of(leaf.x(), 0, leaf.z())));
+        }
         Collections.shuffle(leaves, random);
-        BlockFace along = extra.grows == TreeExtra.Grows.UP ? BlockFace.UP : BlockFace.DOWN;
+        Set<Long> twigs = new HashSet<>();
         List<Placement> result = new ArrayList<>(placements);
         long wanted = Math.round(leaves.size() * share);
         int hung = 0;
@@ -293,8 +311,16 @@ final class TreePaster {
                 taken.add(BlockKeys.of(x, at, z));
                 result.add(new Placement(x, at, z, hanging(extra, i == chain - 1, from.getOppositeFace(), random)));
             }
-            hung += chain > 0 ? 1 : 0;
+            if (chain > 0) {
+                hung++;
+                twigs.add(BlockKeys.of(leaf.x(), leaf.y(), leaf.z()));
+            }
             blocks += chain;
+        }
+        if (onTwigs) {
+            BaseBlock twig = wood;
+            result.replaceAll(placement -> twigs.contains(BlockKeys.of(placement.x(), placement.y(), placement.z()))
+                    ? new Placement(placement.x(), placement.y(), placement.z(), twig) : placement);
         }
         return result;
     }
