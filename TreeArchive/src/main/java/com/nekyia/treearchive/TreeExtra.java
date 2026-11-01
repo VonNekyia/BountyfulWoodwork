@@ -1,6 +1,8 @@
 package com.nekyia.treearchive;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Set;
 import org.bukkit.Material;
 
@@ -8,9 +10,8 @@ import org.bukkit.Material;
  * What can hang on a tree's leaves besides mistletoe, each asked for by a modifier with a
  * strength: {@code &vines=10} on a tenth of the leaves. Vines and glow lichen hold on
  * leaves for good. Cave, weeping and twisting vines and hanging roots need a sturdy face,
- * which leaves do not have, and would fall as soon as their leaf changes: they take a
- * share of the leaves at the crown's edge instead, each turned into a twig of the tree's
- * wood. See {@link TreePaster}.
+ * which leaves do not have: edits beside them leave them be, but when the leaf they hang
+ * on changes - a log next to it is enough - the chain falls.
  */
 enum TreeExtra {
     VINES("vines", Grows.SIDE, 6, Material.VINE, Material.VINE),
@@ -20,7 +21,7 @@ enum TreeExtra {
     WEEPING("weeping", Grows.DOWN, 6, Material.WEEPING_VINES_PLANT, Material.WEEPING_VINES),
     TWISTING("twisting", Grows.UP, 4, Material.TWISTING_VINES_PLANT, Material.TWISTING_VINES);
 
-    /** From which side of a leaf it starts; vines then hang down, twisting vines rise. All but the sides need a twig. */
+    /** From which side of a leaf it starts; vines then hang down, twisting vines rise. */
     enum Grows { SIDE, DOWN, UP }
 
     /** The strength meant by a modifier without a number, in percent of the leaves. */
@@ -57,6 +58,23 @@ enum TreeExtra {
         this.length = length;
         this.body = body;
         this.tip = tip;
+    }
+
+    /**
+     * What these modifiers ask for that has no firm hold by the game's rules, and falls once
+     * the block it depends on changes: a tree with any of it is an illegal tree.
+     */
+    static List<String> illegal(Set<String> modifiers) {
+        List<String> illegal = new ArrayList<>();
+        if (TreeSelection.find(modifiers, TreePaster.Mistletoe.DRY.modifier) != null) {
+            illegal.add(TreePaster.Mistletoe.DRY.modifier);
+        }
+        for (TreeExtra extra : values()) {
+            if (extra.grows != Grows.SIDE && TreeSelection.find(modifiers, extra.modifier) != null) {
+                illegal.add(extra.modifier);
+            }
+        }
+        return illegal;
     }
 
     /** Whether this block is one of these: foliage to a preview, so a hit on its ghost takes no marker away. */

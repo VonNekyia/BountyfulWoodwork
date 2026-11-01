@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
@@ -39,6 +40,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.Tag;
+import org.bukkit.block.Block;
 import org.bukkit.block.data.type.Leaves;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
@@ -314,6 +316,18 @@ final class TreeArchive {
         return persisted;
     }
 
+    /** What stands in a region only because nothing has touched it, by kind: blocks the game would not let stay. */
+    private static Map<String, Integer> illegal(org.bukkit.World world, Region region) {
+        Map<String, Integer> illegal = new TreeMap<>();
+        for (BlockVector3 position : region) {
+            Block block = world.getBlockAt(position.x(), position.y(), position.z());
+            if (!block.isEmpty() && !block.getBlockData().isSupported(block)) {
+                illegal.merge(block.getType().getKey().getKey(), 1, Integer::sum);
+            }
+        }
+        return illegal;
+    }
+
     /** Writes a blueprint whole or not at all: beside it first, then in its place. */
     private static void write(Clipboard clipboard, File schematic) throws IOException {
         Path written = schematic.toPath().resolveSibling(schematic.getName() + ".writing");
@@ -465,6 +479,11 @@ final class TreeArchive {
             if (persisted > 0) {
                 player.sendMessage(Component.text(persisted + " leaves of the tree would have decayed;"
                         + " in the blueprint they are persistent.", NamedTextColor.YELLOW));
+            }
+            Map<String, Integer> illegal = illegal(player.getWorld(), box);
+            if (!illegal.isEmpty()) {
+                player.sendMessage(Component.text("Illegal tree: " + illegal + " have no firm hold by the game's rules"
+                        + " and fall once what holds them changes. It is archived all the same.", NamedTextColor.YELLOW));
             }
 
             File schematic = new File(folder(), id + ".schem");

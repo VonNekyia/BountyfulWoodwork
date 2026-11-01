@@ -120,4 +120,12 @@ class PreviewMenuTest {
         }
         assertFalse(TreeExtra.hanging(org.bukkit.Material.STONE));
     }
+
+    /** What has no firm hold is named, at any strength; what holds on leaves, and mistletoe with its moss, is not. */
+    @Test
+    void anIllegalTreeIsKnownByWhatHangsOnIt() {
+        assertEquals(List.of(), TreeExtra.illegal(java.util.Set.of("vines=10", "lichen", "mistle=30", "bright")));
+        assertEquals(List.of("drymistle", "glowberries", "roots", "weeping", "twisting"), TreeExtra.illegal(
+                java.util.Set.of("twisting", "weeping=5", "roots", "glowberries=50", "drymistle", "vines")));
+    }
 }

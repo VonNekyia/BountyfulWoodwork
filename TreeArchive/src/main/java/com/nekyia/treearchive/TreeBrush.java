@@ -6,6 +6,7 @@ import com.sk89q.worldedit.WorldEditException;
 import com.sk89q.worldedit.bukkit.BukkitAdapter;
 import com.sk89q.worldedit.extent.clipboard.Clipboard;
 import com.sk89q.worldedit.math.BlockVector3;
+import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -137,6 +138,13 @@ final class TreeBrush implements Listener {
         }
         if (!paster.paste(entry.type(), clipboard, base, player, false, pick.modifiers(), pick.paint())) {
             player.sendActionBar(Component.text("The tree would collide with blocks there.", NamedTextColor.RED));
+            return;
+        }
+        // In the action bar, as a brush plants one tree after another.
+        List<String> illegal = TreeExtra.illegal(pick.modifiers());
+        if (!illegal.isEmpty()) {
+            player.sendActionBar(Component.text("Illegal tree: " + String.join(", ", illegal)
+                    + " will fall once what holds them changes.", NamedTextColor.YELLOW));
         }
     }
 

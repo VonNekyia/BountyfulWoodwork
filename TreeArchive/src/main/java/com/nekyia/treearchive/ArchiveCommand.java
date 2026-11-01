@@ -669,8 +669,8 @@ final class ArchiveCommand implements CommandExecutor, TabCompleter {
      * beech*#f5d130>#c0392b a fade up the crown, or out of it with &out; modifiers
      * follow per tree, beech*#ffffff&bright putting its leaves on their lighter texture,
      * beech&mistle hanging mistletoe in its crown, beech&drymistle dry mistletoe and
-     * beech&vines=10 vines on a tenth of its leaves, &lichen alike; &glowberries, &roots, &weeping
-     * and &twisting take a share of the crown's edge, each on a twig of the tree's wood.
+     * beech&vines=10 vines on a tenth of its leaves; &lichen, &glowberries, &roots, &weeping
+     * and &twisting go the same way.
      * /ta preview alone opens the menu, where all of this is put together by clicking.
      * /ta preview player name - sends someone a link to the preview you are looking at.
      * /ta preview clear - takes the preview away again.
