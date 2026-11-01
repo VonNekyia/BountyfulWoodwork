@@ -280,7 +280,7 @@ final class TreePaster {
                 break;
             }
             BlockFace from = extra.grows == TreeExtra.Grows.SIDE ? SIDES.get(random.nextInt(SIDES.size())) : along;
-            int length = 1 + random.nextInt(extra.length);
+            int length = Math.min(1 + random.nextInt(extra.length), TreeExtra.MOST_BLOCKS - blocks);
             int x = leaf.x() + from.getModX();
             int y = leaf.y() + from.getModY();
             int z = leaf.z() + from.getModZ();

@@ -9,7 +9,7 @@ import org.bukkit.Material;
  * strength: {@code &vines=10} on a tenth of the leaves. Vines and glow lichen hold on
  * leaves for good. Cave, weeping and twisting vines and hanging roots need a sturdy face,
  * which leaves do not have: edits beside them leave them be, but when the leaf they hang
- * on changes - a log next to it is enough - the chain falls, up to the next one.
+ * on changes - a log next to it is enough - the chain falls.
  */
 enum TreeExtra {
     VINES("vines", Grows.SIDE, 6, Material.VINE, Material.VINE),
