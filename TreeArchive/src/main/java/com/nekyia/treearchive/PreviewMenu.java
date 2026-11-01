@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -26,10 +27,12 @@ import net.kyori.adventure.text.TextComponent;
 import net.kyori.adventure.text.event.ClickCallback;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextColor;
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jspecify.annotations.Nullable;
 
@@ -54,12 +57,24 @@ final class PreviewMenu implements Listener {
     private static final int ADMIN_LIMIT = 5000;
     private static final int WIDE = 300;
     private static final int TAB = 100;
+    private static final int TYPE = 130;
+    private static final int QUICK = 100;
     private static final ClickCallback.Options CLICKS = ClickCallback.Options.builder()
             .uses(ClickCallback.UNLIMITED_USES).lifetime(Duration.ofMinutes(10)).build();
     /** Clicks closer together than this are dropped, in nanoseconds: nobody clicks that fast by hand. */
     private static final long CLICK_GAP = 100_000_000L;
     private static final String NONE = "none";
-    private static final String WRITTEN = "written";
+    /** The marker blocks the built-in presets use, and what grows on them there. */
+    private static final Map<String, String> MARKERS = new LinkedHashMap<>();
+
+    static {
+        MARKERS.put("gold_block", "Broadleaf trees in the built-in presets");
+        MARKERS.put("diamond_block", "Conifers in the built-in presets");
+        MARKERS.put("emerald_block", "Birches in the built-in presets");
+        MARKERS.put("redstone_block", "Fruit and accent trees in the built-in presets");
+        MARKERS.put("netherite_block", "Dark and old trees in the built-in presets");
+    }
+
     /** Names of presets, namespaces and colours. */
     static final String NAME = "[a-z0-9_-]{1,32}";
     /** How much one player keeps and puts together, so no one fills the server's files. */
@@ -171,6 +186,7 @@ final class PreviewMenu implements Listener {
     private void main(Player player, @Nullable String note) {
         UUID uuid = player.getUniqueId();
         List<ActionButton> buttons = new ArrayList<>();
+        buttons.add(button("Quick forest", "The presets TreeArchive brings, a click away", who -> quick(who, null)));
         buttons.add(button("New preview", "Put one together from marker blocks and their trees", who -> {
             drafts.put(uuid, new Draft(PreviewLibrary.Shelf.of(uuid), null));
             editor(who, null);
@@ -190,6 +206,42 @@ final class PreviewMenu implements Listener {
         player.showDialog(dialog("Tree previews", lines(note, preview.shared(player) != null
                 ? "A preview is showing." : "Marker blocks around you turn into trees from the archive - for your"
                         + " eyes only."), List.of(), buttons, null));
+    }
+
+    /** The presets TreeArchive brings, a click from a forest; or, ticked, a copy to change. */
+    private void quick(Player player, @Nullable String note) {
+        UUID uuid = player.getUniqueId();
+        List<ActionButton> buttons = new ArrayList<>();
+        for (String namespace : library.namespaces()) {
+            PreviewLibrary.Shelf shelf = PreviewLibrary.Shelf.namespace(namespace);
+            for (String name : library.presets(shelf)) {
+                List<String> parts = library.preset(shelf, name);
+                if (parts == null || !library.builtIn(shelf, name)) {
+                    continue;
+                }
+                int[] colours = firstColours(parts);
+                Component label = colours == null ? Component.text(name)
+                        : swatch(new int[] {colours[colours.length - 1]}).append(Component.text(" " + name));
+                buttons.add(button(label, namespace + "@" + name, QUICK, (view, who) -> {
+                    if (Boolean.TRUE.equals(view.getBoolean("change"))) {
+                        drafts.put(uuid, draft(PreviewLibrary.Shelf.of(uuid), null, parts));
+                        editor(who, "A copy of " + name + "; save it to keep it.");
+                    } else {
+                        show(who, parts);
+                    }
+                }));
+            }
+        }
+        player.showDialog(dialog("Quick forest", lines(note, null),
+                List.of(DialogInput.bool("change", Component.text("Change it first: open a copy as my own")).build()),
+                buttons, button("Back", null, who -> main(who, null)), 4));
+    }
+
+    /** The colours of a preset's first painted tree, for showing the preset at a glance. */
+    private static int @Nullable [] firstColours(List<String> parts) {
+        Draft read = draft(PreviewLibrary.Shelf.namespace("-"), null, parts);
+        return read.markers.stream().flatMap(marker -> marker.trees.stream()).map(tree -> tree.colours)
+                .filter(Objects::nonNull).findFirst().orElse(null);
     }
 
     /** A shelf's presets: the player's own, or a namespace's. */
@@ -304,7 +356,7 @@ final class PreviewMenu implements Listener {
                 return;
             }
             draft.markers.add(new Marker());
-            marker(who, draft.markers.size() - 1, null);
+            markerBlock(who, draft.markers.size() - 1, null);
         }));
         buttons.add(button("Show", "Grows the preview around you", (view, who) -> {
             keep(view, draft, who);
@@ -348,49 +400,160 @@ final class PreviewMenu implements Listener {
             return;
         }
         Marker marker = draft.markers.get(index);
-        List<DialogInput> inputs = List.of(DialogInput.text("blocks", Component.text(
-                        "Marker block - or several by shares, 70%gold_block,30%diamond_block"))
-                .initial(marker.blocks).maxLength(200).width(WIDE).build());
         List<ActionButton> buttons = new ArrayList<>();
+        buttons.add(button("Change the block", "Which block turns into these trees", who -> markerBlock(who, index, null)));
         for (int i = 0; i < marker.trees.size(); i++) {
             int tree = i;
-            buttons.add(button(marker.trees.get(i).word.isEmpty() ? "(no tree yet)" : marker.trees.get(i).word, null, (view, who) -> {
-                marker.blocks = blocks(view);
-                tree(who, index, tree, Tab.TREE, null);
-            }));
+            buttons.add(button(marker.trees.get(i).word.isEmpty() ? "(no tree yet)" : marker.trees.get(i).word, null,
+                    who -> tree(who, index, tree, Tab.TREE, null)));
         }
-        buttons.add(button("Add a tree", "Without any, the block grows every archived tree", (view, who) -> {
-            marker.blocks = blocks(view);
+        buttons.add(button("Add a tree", "Without any, the block grows every archived tree", who -> {
             if (marker.trees.size() >= MAX_TREES) {
                 marker(who, index, MAX_TREES + " trees are the most for one block.");
                 return;
             }
             marker.trees.add(new Tree());
-            tree(who, index, marker.trees.size() - 1, Tab.TREE, null);
+            treeType(who, index, marker.trees.size() - 1);
         }));
         buttons.add(button("Remove the block", null, who -> {
             draft.markers.remove(marker);
             editor(who, null);
         }));
-        List<DialogBody> body = new ArrayList<>(lines(note, marker.trees.isEmpty()
-                ? "No trees chosen: every archived tree grows on it." : null));
-        for (Tree tree : marker.trees) {
-            body.add(DialogBody.plainMessage(describe(tree, marker.trees), WIDE));
+        List<DialogBody> body = new ArrayList<>(lines(note, null));
+        body.add(blockIcon(marker.blocks));
+        if (marker.trees.isEmpty()) {
+            body.add(DialogBody.plainMessage(Component.text("No trees chosen: every archived tree grows on it."), WIDE));
         }
-        player.showDialog(dialog("Marker block", body, inputs, buttons, button("Done", null, (view, who) -> {
-            marker.blocks = blocks(view);
+        for (Tree tree : marker.trees) {
+            if (!tree.word.isEmpty()) {
+                body.add(DialogBody.plainMessage(describe(tree, marker.trees), WIDE));
+            }
+        }
+        player.showDialog(dialog("Marker block", body, List.of(), buttons, button("Done", null, who -> editor(who, null))));
+    }
+
+    /** The block as an icon with its name beside it; several by shares show the first. */
+    private static DialogBody blockIcon(String blocks) {
+        Component written = Component.text(blocks);
+        List<TreeSelection.Part> words = TreeSelection.parse(blocks).parts();
+        Material material = words.isEmpty() ? null : Material.matchMaterial(words.getFirst().word());
+        return material == null || material.isAir() || !material.isItem() ? DialogBody.plainMessage(written, WIDE)
+                : DialogBody.item(ItemStack.of(material)).description(DialogBody.plainMessage(written, 150)).build();
+    }
+
+    /** Which block a marker is: the one in hand, one the built-in presets use, or written out. */
+    private void markerBlock(Player player, int index, @Nullable String note) {
+        Draft draft = drafts.get(player.getUniqueId());
+        if (draft == null || index >= draft.markers.size()) {
+            editor(player, null);
+            return;
+        }
+        Marker marker = draft.markers.get(index);
+        List<ActionButton> buttons = new ArrayList<>();
+        Material held = player.getInventory().getItemInMainHand().getType();
+        String inHand = held.isBlock() && !held.isAir() ? held.getKey().getKey() : null;
+        buttons.add(button(inHand == null ? "Block in my hand" : "In hand: " + inHand, "Every copy of the block you hold around you", who -> {
+            Material now = who.getInventory().getItemInMainHand().getType();
+            if (!now.isBlock() || now.isAir()) {
+                markerBlock(who, index, "Hold a block to use it.");
+                return;
+            }
+            marker.blocks = now.getKey().getKey();
+            marker(who, index, null);
+        }));
+        MARKERS.forEach((block, what) -> buttons.add(button(block, what, who -> {
+            marker.blocks = block;
+            marker(who, index, null);
+        })));
+        buttons.add(button("Several, by shares ...", "Written out, like 70%gold_block,30%diamond_block", who -> markerText(who, index, null)));
+        player.showDialog(dialog("Which block?", lines(note, null), List.of(), buttons, button("Back", null, who -> {
+            // A block never chosen is no block.
             if (marker.blocks.isEmpty()) {
                 draft.markers.remove(marker);
                 editor(who, null);
-                return;
-            }
-            try {
-                PreviewSpec.parse(marker.blocks);
-                editor(who, null);
-            } catch (IllegalArgumentException e) {
-                marker(who, index, "Cannot read that: " + e.getMessage() + ".");
+            } else {
+                marker(who, index, null);
             }
         })));
+    }
+
+    private void markerText(Player player, int index, @Nullable String note) {
+        Draft draft = drafts.get(player.getUniqueId());
+        if (draft == null || index >= draft.markers.size()) {
+            editor(player, null);
+            return;
+        }
+        Marker marker = draft.markers.get(index);
+        player.showDialog(dialog("Which blocks?", lines(note, null),
+                List.of(DialogInput.text("blocks", Component.text("Blocks, like 70%gold_block,30%diamond_block"))
+                        .initial(marker.blocks).maxLength(200).width(WIDE).build()),
+                List.of(button("Use them", null, (view, who) -> {
+                    String blocks = blocks(view);
+                    try {
+                        PreviewSpec.parse(blocks);
+                        marker.blocks = blocks;
+                        marker(who, index, null);
+                    } catch (IllegalArgumentException e) {
+                        markerText(who, index, "Cannot read that: " + e.getMessage() + ".");
+                    }
+                })), button("Back", null, who -> markerBlock(who, index, null))));
+    }
+
+    /** What a tree is: one of the types with trees in the archive, a click each, or words. */
+    private void treeType(Player player, int markerIndex, int index) {
+        Draft draft = drafts.get(player.getUniqueId());
+        if (draft == null || markerIndex >= draft.markers.size()
+                || index >= draft.markers.get(markerIndex).trees.size()) {
+            editor(player, null);
+            return;
+        }
+        Marker marker = draft.markers.get(markerIndex);
+        Tree tree = marker.trees.get(index);
+        List<ActionButton> buttons = new ArrayList<>();
+        for (String type : archive.types()) {
+            long trees = archive.entries().stream().filter(entry -> entry.type().equals(type)).count();
+            if (trees > 0) {
+                buttons.add(button(type.equals(tree.word) ? Component.text(type, NamedTextColor.GOLD) : Component.text(type),
+                        trees + " archived trees", TYPE, who -> {
+                            tree.word = type;
+                            tree(who, markerIndex, index, Tab.TREE, null);
+                        }));
+            }
+        }
+        buttons.add(button(Component.text("Words ..."), "A size, a creator or a name", TYPE, who -> treeWords(who, markerIndex, index, null)));
+        player.showDialog(dialog("Which tree?", List.of(), List.of(), buttons, button("Back", null, who -> {
+            // A tree never chosen is no tree.
+            if (tree.word.isEmpty()) {
+                marker.trees.remove(tree);
+                marker(who, markerIndex, null);
+            } else {
+                tree(who, markerIndex, index, Tab.TREE, null);
+            }
+        }), 3));
+    }
+
+    private void treeWords(Player player, int markerIndex, int index, @Nullable String note) {
+        Draft draft = drafts.get(player.getUniqueId());
+        if (draft == null || markerIndex >= draft.markers.size()
+                || index >= draft.markers.get(markerIndex).trees.size()) {
+            editor(player, null);
+            return;
+        }
+        Tree tree = draft.markers.get(markerIndex).trees.get(index);
+        player.showDialog(dialog("Which tree?", lines(note, null),
+                List.of(DialogInput.text("word", Component.text("A type, size, creator or a piece of a name"))
+                        .initial(tree.word).maxLength(100).width(WIDE).build()),
+                List.of(button("Use it", null, (view, who) -> {
+                    String written = Objects.requireNonNullElse(view.getText("word"), "").toLowerCase(Locale.ROOT)
+                            .replaceAll("[\\s,/:*&%]", "");
+                    String word = written.substring(0, Math.min(written.length(), 100));
+                    if (archive.entries().stream().noneMatch(entry -> TreeArchive.matches(entry, word)) || word.isEmpty()) {
+                        treeWords(who, markerIndex, index, "No archived tree matches '" + word + "'.");
+                        return;
+                    }
+                    tree.word = word;
+                    tree(who, markerIndex, index, Tab.TREE, null);
+                })), button("Back", null, who -> treeType(who, markerIndex, index))));
     }
 
     /** One tree of a marker block, a tab at a time; every click keeps what the tab says. */
@@ -413,6 +576,10 @@ final class PreviewMenu implements Listener {
                     }));
         }
         if (tab == Tab.TREE) {
+            buttons.add(button(Component.text(tree.word.isEmpty() ? "Which tree?" : tree.word), "Another type, or words", TAB, (view, who) -> {
+                keep(view, tree, tab);
+                treeType(who, markerIndex, index);
+            }));
             buttons.add(button(Component.text("Remove"), "Takes this tree off the block", TAB, who -> {
                 marker.trees.remove(tree);
                 marker(who, markerIndex, null);
@@ -421,8 +588,16 @@ final class PreviewMenu implements Listener {
         if (tab == Tab.LEAVES) {
             Consumer<Player> back = who -> tree(who, markerIndex, index, Tab.LEAVES, null);
             buttons.add(paint("Leaf colour", tree.colours, tree, new ColourPicker.Target("Leaf colour", () -> tree.colours,
-                    stops -> tree.colours = stops, back, true, true, stops -> ColourPicker.example(stops, tree.out, tree.bright,
-                    tree.secondary, tree.blossom, tree.bloom))));
+                    stops -> {
+                        tree.colours = stops;
+                        // A light colour only shows on the lighter texture; the box stays free to change.
+                        tree.bright |= stops != null && ColourPicker.light(stops);
+                    }, back, true, true, stops -> ColourPicker.example(stops, tree.out,
+                    tree.bright || stops != null && ColourPicker.light(stops), tree.secondary, tree.blossom, tree.bloom))));
+        }
+        // Without a leaf colour there is nothing for these to go with.
+        if (tab == Tab.LEAVES && tree.colours != null) {
+            Consumer<Player> back = who -> tree(who, markerIndex, index, Tab.LEAVES, null);
             buttons.add(paint("Secondary", single(tree.secondary), tree, new ColourPicker.Target("Secondary colour",
                     () -> single(tree.secondary), stops -> tree.secondary = stops == null ? 0 : stops[0] | LeafColours.PRESENT,
                     back, false, true, stops -> ColourPicker.example(tree.colours, tree.out, tree.bright,
@@ -435,19 +610,15 @@ final class PreviewMenu implements Listener {
         List<DialogBody> body = new ArrayList<>(lines(note, null));
         body.add(DialogBody.plainMessage(ColourPicker.example(tree.colours, tree.out, tree.bright, tree.secondary,
                 tree.blossom, tree.bloom), WIDE));
-        player.showDialog(dialog((tree.word.isEmpty() ? "New tree" : tree.word) + " on " + marker.blocks, body, inputs(tree, tab), buttons,
+        player.showDialog(dialog((tree.word.isEmpty() ? "New tree" : shortened(tree.word)) + " on " + firstBlock(marker.blocks),
+                body, inputs(tree, tab, marker.trees.size()), buttons,
                 button("Done", null, (view, who) -> {
                     keep(view, tree, tab);
-                    long matching = archive.entries().stream().filter(entry -> TreeArchive.matches(entry, tree.word)).count();
-                    if (tree.word.isEmpty() || matching == 0) {
-                        tree(who, markerIndex, index, Tab.TREE, tree.word.isEmpty() ? "Choose a tree type or write words."
-                                : "No archived tree matches '" + tree.word + "'.");
-                        return;
+                    if (tree.word.isEmpty()) {
+                        treeType(who, markerIndex, index);
+                    } else {
+                        marker(who, markerIndex, null);
                     }
-                    marker(who, markerIndex, tree.colours == null
-                            && (tree.bright || tree.out || tree.secondary != 0 || tree.blossom != 0)
-                            ? "Bright, the outward fade, the secondary colour and blossoms only go with a leaf colour."
-                            : null);
                 }), 3));
     }
 
@@ -461,65 +632,75 @@ final class PreviewMenu implements Listener {
         });
     }
 
+    /** Words as long as a title has room for. */
+    private static String shortened(String words) {
+        return words.length() <= 24 ? words : words.substring(0, 24) + "...";
+    }
+
+    /** The first of a marker's blocks, for a title of one line: others follow as dots. */
+    private static String firstBlock(String blocks) {
+        int comma = blocks.indexOf(',');
+        String first = (comma < 0 ? blocks : blocks.substring(0, comma)).replaceFirst("^[0-9.]+%", "");
+        return shortened(first) + (comma < 0 ? "" : " ...");
+    }
+
     private static int @Nullable [] single(int colour) {
         return colour == 0 ? null : new int[] {colour & 0xFFFFFF};
     }
 
-    /** What a tab asks. */
-    private List<DialogInput> inputs(Tree tree, Tab tab) {
-        return switch (tab) {
-            case TREE -> {
-                boolean typed = archive.types().contains(tree.word);
-                List<SingleOptionDialogInput.OptionEntry> types = new ArrayList<>();
-                types.add(SingleOptionDialogInput.OptionEntry.create(WRITTEN, Component.text("As written below"), !typed));
-                for (String type : archive.types()) {
-                    types.add(SingleOptionDialogInput.OptionEntry.create(type, Component.text(type), type.equals(tree.word)));
-                }
-                yield List.of(
-                        DialogInput.singleOption("type", Component.text("Tree type"), types).width(WIDE).build(),
-                        DialogInput.text("word", Component.text("... or words: a type, size, creator or name"))
-                                .initial(typed ? "" : tree.word).maxLength(100).width(WIDE).build(),
-                        DialogInput.numberRange("share", Component.text("Share among the block's trees"), 1, 100)
-                                .step(1f).initial((float) tree.share).width(WIDE).build());
-            }
-            case LEAVES -> List.of(
-                    DialogInput.bool("bright", Component.text("Bright - on a lighter leaf texture")).initial(tree.bright).build(),
-                    DialogInput.bool("out", Component.text("Fade from the middle outwards, not upwards"))
-                            .initial(tree.out).build(),
-                    DialogInput.numberRange("bloom", Component.text("Leaves in blossom, %"), 1, 100)
-                            .step(1f).initial((float) tree.bloom).width(WIDE).build());
-            case EXTRAS -> List.of(
-                    DialogInput.singleOption("mistle", Component.text("Mistletoe"), List.of(
-                            SingleOptionDialogInput.OptionEntry.create(NONE, Component.text("None"), tree.mistle.equals(NONE)),
-                            SingleOptionDialogInput.OptionEntry.create("mistle", Component.text("Moss with bushes"),
-                                    tree.mistle.equals("mistle")),
-                            SingleOptionDialogInput.OptionEntry.create("drymistle",
-                                    Component.text("Dry - mangrove roots with dry grass"), tree.mistle.equals("drymistle"))))
-                            .width(WIDE).build(),
-                    DialogInput.numberRange("strength", Component.text("Mistletoe in place of leaves, %"), 1, 100)
-                            .step(1f).initial((float) tree.strength).width(WIDE).build());
-        };
-    }
-
-    /** Reads a tab back, as the client's word only: the rest would go into the preview's command line. */
-    private static void keep(DialogResponseView view, Tree tree, Tab tab) {
+    /** What a tab asks: only what means something for the tree so far. */
+    private List<DialogInput> inputs(Tree tree, Tab tab, int trees) {
+        List<DialogInput> inputs = new ArrayList<>();
         switch (tab) {
             case TREE -> {
-                String type = Objects.requireNonNullElse(view.getText("type"), WRITTEN);
-                String written = (type.equals(WRITTEN) ? Objects.requireNonNullElse(view.getText("word"), "") : type)
-                        .toLowerCase(Locale.ROOT).replaceAll("[\\s,/:*&%]", "");
-                tree.word = written.substring(0, Math.min(written.length(), 100));
-                tree.share = percent(view.getFloat("share"), 1);
+                if (trees > 1) {
+                    inputs.add(DialogInput.numberRange("share", Component.text("Share among the block's trees"), 1, 100)
+                            .step(1f).initial((float) tree.share).width(WIDE).build());
+                }
             }
             case LEAVES -> {
-                tree.bright = Boolean.TRUE.equals(view.getBoolean("bright"));
-                tree.out = Boolean.TRUE.equals(view.getBoolean("out"));
-                tree.bloom = percent(view.getFloat("bloom"), TreeSelection.BLOOM);
+                if (tree.colours != null) {
+                    inputs.add(DialogInput.bool("bright", Component.text("Bright - on a lighter leaf texture")).initial(tree.bright).build());
+                }
+                if (tree.colours != null && tree.colours.length > 1) {
+                    inputs.add(DialogInput.bool("out", Component.text("Fade from the middle outwards, not upwards")).initial(tree.out).build());
+                }
+                if (tree.colours != null && tree.blossom != 0) {
+                    inputs.add(DialogInput.numberRange("bloom", Component.text("Leaves in blossom, %"), 1, 100)
+                            .step(1f).initial((float) tree.bloom).width(WIDE).build());
+                }
+            }
+            case EXTRAS -> {
+                inputs.add(DialogInput.singleOption("mistle", Component.text("Mistletoe"), List.of(
+                        SingleOptionDialogInput.OptionEntry.create(NONE, Component.text("None"), tree.mistle.equals(NONE)),
+                        SingleOptionDialogInput.OptionEntry.create("mistle", Component.text("Moss with bushes"),
+                                tree.mistle.equals("mistle")),
+                        SingleOptionDialogInput.OptionEntry.create("drymistle",
+                                Component.text("Dry - mangrove roots with dry grass"), tree.mistle.equals("drymistle"))))
+                        .width(WIDE).build());
+                inputs.add(DialogInput.numberRange("strength", Component.text("Mistletoe in place of leaves, %"), 1, 100)
+                        .step(1f).initial((float) tree.strength).width(WIDE).build());
+            }
+        }
+        return inputs;
+    }
+
+    /**
+     * Reads a tab back, as the client's word only: anything else would go into the preview's
+     * command line. What the tab did not ask stays as it is.
+     */
+    private static void keep(DialogResponseView view, Tree tree, Tab tab) {
+        switch (tab) {
+            case TREE -> tree.share = percent(view.getFloat("share"), tree.share);
+            case LEAVES -> {
+                tree.bright = Objects.requireNonNullElse(view.getBoolean("bright"), tree.bright);
+                tree.out = Objects.requireNonNullElse(view.getBoolean("out"), tree.out);
+                tree.bloom = percent(view.getFloat("bloom"), tree.bloom);
             }
             case EXTRAS -> {
                 String mistle = view.getText("mistle");
                 tree.mistle = "mistle".equals(mistle) || "drymistle".equals(mistle) ? mistle : NONE;
-                tree.strength = percent(view.getFloat("strength"), TreePaster.MISTLE_STRENGTH);
+                tree.strength = percent(view.getFloat("strength"), tree.strength);
             }
         }
     }
@@ -565,9 +746,9 @@ final class PreviewMenu implements Listener {
         editor(player, "Saved as " + name + " in " + where(shelf) + ".");
     }
 
-    private void confirm(Player player, String question, Runnable yes, Runnable no) {
+    void confirm(Player player, String question, Runnable yes, Runnable no) {
         player.showDialog(Dialog.create(factory -> factory.empty()
-                .base(DialogBase.builder(Component.text(question)).build())
+                .base(DialogBase.builder(Component.text(question)).afterAction(DialogBase.DialogAfterAction.WAIT_FOR_RESPONSE).build())
                 .type(DialogType.confirmation(button("Yes", null, who -> yes.run()), button("No", null, who -> no.run())))));
     }
 
@@ -577,6 +758,7 @@ final class PreviewMenu implements Listener {
      * space - nothing that could slip in a --seed, an --at or a word of /ta preview's own.
      */
     private void show(Player player, List<String> parts) {
+        player.closeDialog();
         for (String part : parts) {
             if (!fits(part)) {
                 player.sendMessage(Component.text("That preview cannot be shown: " + part, NamedTextColor.RED));
@@ -728,9 +910,10 @@ final class PreviewMenu implements Listener {
     }
 
     private static Component describe(Tree tree, List<Tree> all) {
-        int total = all.stream().mapToInt(each -> each.share).sum();
+        List<Tree> chosen = all.stream().filter(each -> !each.word.isEmpty()).toList();
+        int total = chosen.stream().mapToInt(each -> each.share).sum();
         TextComponent.Builder line = Component.text();
-        if (all.size() > 1) {
+        if (chosen.size() > 1) {
             line.append(Component.text(Math.round(100.0 * tree.share / Math.max(1, total)) + "% "));
         }
         line.append(Component.text(tree.word));
@@ -818,7 +1001,9 @@ final class PreviewMenu implements Listener {
                 : exit == null ? DialogType.multiAction(buttons).columns(columns).build()
                         : DialogType.multiAction(buttons).columns(columns).exitAction(exit).build();
         return Dialog.create(factory -> factory.empty()
-                .base(DialogBase.builder(Component.text(title)).body(body).inputs(inputs).build())
+                .base(DialogBase.builder(Component.text(title)).body(body).inputs(inputs)
+                        // The next screen comes from here, or closeDialog in show(): the mouse stays put.
+                        .afterAction(DialogBase.DialogAfterAction.WAIT_FOR_RESPONSE).build())
                 .type(type));
     }
 

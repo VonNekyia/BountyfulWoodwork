@@ -62,10 +62,12 @@ final class ColourPicker {
     /** The green of leaves without a colour from the server, more or less. */
     private static final int OWN_GREEN = 0x59ae30;
     /**
-     * The example block, a leaf texture in small: 1 to 3 are shades of the leaf colour, S
-     * takes the secondary colour, and B the blossoms, one for every fifth of the leaves in bloom.
+     * The example block, a leaf texture in small, flat so a screen keeps its buttons in
+     * sight - at the usual GUI scales a dialog has 240 pixels of height: 1 to 3 are shades of
+     * the leaf colour, S takes the secondary colour, and B the blossoms, one for every fifth
+     * of the leaves in bloom.
      */
-    private static final String[] BLOCK = {"2B31S", "3S2B1", "B13S2", "2S1B3", "31B2S"};
+    private static final String[] BLOCK = {"BS3B2", "1B2S3", "2BS1B"};
     private static final double[] SHADES = {0.55, 0.70, 0.85};
     private static final double[] SHADES_BRIGHT = {0.80, 0.92, 1.0};
     /** Rows of eight: greens, autumn, blossoms and light, cold and magic, dark and earth. */
@@ -158,20 +160,34 @@ final class ColourPicker {
                 DialogInput.numberRange("saturation", Component.text("Saturation"), 0, 100).step(1f)
                         .initial((float) Math.round(hsb[1] * 100)).width(WIDE).build(),
                 DialogInput.numberRange("brightness", Component.text("Brightness"), 0, 100).step(1f)
-                        .initial((float) Math.round(hsb[2] * 100)).width(WIDE).build(),
-                DialogInput.text("hex", Component.text("Hex")).labelVisible(false).initial(hex(rgb)).maxLength(7).width(WIDE).build());
+                        .initial((float) Math.round(hsb[2] * 100)).width(WIDE).build());
         List<ActionButton> buttons = List.of(
-                menu.button(Component.text("Apply"), "Shows the colour here", 100, (view, who) -> mix(who, target, read(view, rgb), null)),
-                menu.button(Component.text("Use it"), "Takes the colour", 100, (view, who) -> {
+                menu.button(Component.text("Apply"), "Shows the colour here", 72, (view, who) -> mix(who, target, read(view, rgb), null)),
+                menu.button(Component.text("Use it"), "Takes the colour", 72, (view, who) -> {
                     target.take().accept(new int[] {read(view, rgb)});
                     target.back().accept(who);
                 }),
-                menu.button(Component.text("Keep ..."), "Also keeps it in My colours", 100,
+                menu.button(Component.text("Hex ..."), hex(rgb), 72, (view, who) -> hexEntry(who, target, read(view, rgb), null)),
+                menu.button(Component.text("Keep ..."), "Also keeps it in My colours", 72,
                         (view, who) -> keepAs(who, target, read(view, rgb), null)));
         List<DialogBody> body = new ArrayList<>(PreviewMenu.lines(note, null));
         body.add(DialogBody.plainMessage(target.example().apply(new int[] {rgb}), WIDE));
         player.showDialog(PreviewMenu.dialog(target.title() + ": mix", body, inputs, buttons,
-                menu.button("Back", null, who -> palette(who, target, null)), 3));
+                menu.button("Back", null, who -> palette(who, target, null)), 4));
+    }
+
+    /** A colour typed as hex, back to mixing with it. */
+    private void hexEntry(Player player, Target target, int rgb, @Nullable String note) {
+        player.showDialog(PreviewMenu.dialog("Hex", PreviewMenu.lines(note, null),
+                List.of(DialogInput.text("hex", Component.text("Like #6c8fe8")).initial(hex(rgb)).maxLength(7).width(WIDE).build()),
+                List.of(menu.button("Use it", null, (view, who) -> {
+                    int[] typed = TreeSelection.colours(Objects.requireNonNullElse(view.getText("hex"), "").trim());
+                    if (typed == null || typed.length != 1) {
+                        hexEntry(who, target, rgb, "That is no colour.");
+                    } else {
+                        mix(who, target, typed[0], null);
+                    }
+                })), menu.button("Back", null, who -> mix(who, target, rgb, null)), 1));
     }
 
     /** Keeps a mixed colour under a name, and goes on mixing. */
@@ -180,29 +196,21 @@ final class ColourPicker {
                 List.of(DialogInput.text("name", Component.text("Name")).maxLength(32).width(WIDE).build()),
                 List.of(menu.button("Keep", null, (view, who) -> {
                     String name = Objects.requireNonNullElse(view.getText("name"), "").trim().toLowerCase(Locale.ROOT);
-                    String refused = keep(who, null, name, new int[] {colour});
-                    if (refused != null) {
-                        keepAs(who, target, colour, refused);
-                    } else {
-                        mix(who, target, colour, "Kept as " + name + ".");
-                    }
+                    keep(who, null, name, new int[] {colour}, () -> mix(who, target, colour, "Kept as " + name + "."),
+                            refused -> keepAs(who, target, colour, refused));
                 })), menu.button("Back", null, who -> mix(who, target, colour, null)), 1));
     }
 
     private static int read(DialogResponseView view, int rgb) {
-        return mixed(view.getFloat("hue"), view.getFloat("saturation"), view.getFloat("brightness"), view.getText("hex"), rgb);
+        return mixed(view.getFloat("hue"), view.getFloat("saturation"), view.getFloat("brightness"), rgb);
     }
 
     /**
-     * What the mix screen says, starting from {@code rgb}: hex wins if it was changed and
-     * reads, otherwise the sliders - unless they stand where they stood, as the way there
-     * and back through hue and saturation would shift the colour a little.
+     * What the mix screen says, starting from {@code rgb}: the sliders - unless they stand
+     * where they stood, as the way there and back through hue and saturation would shift the
+     * colour a little.
      */
-    static int mixed(@Nullable Float hue, @Nullable Float saturation, @Nullable Float brightness, @Nullable String hex, int rgb) {
-        int[] typed = hex == null ? null : TreeSelection.colours(hex.trim());
-        if (typed != null && typed.length == 1 && typed[0] != rgb) {
-            return typed[0];
-        }
+    static int mixed(@Nullable Float hue, @Nullable Float saturation, @Nullable Float brightness, int rgb) {
         float[] was = hsb(rgb);
         int h = whole(hue, Math.round(was[0] * 360), 360);
         int s = whole(saturation, Math.round(was[1] * 100), 100);
@@ -322,12 +330,8 @@ final class ColourPicker {
         }
         buttons.add(menu.button(Component.text("Save"), "Keeps it under its name", CELL, (view, who) -> {
             name(view, kept);
-            String refused = keep(who, kept.original, kept.name, kept.stops);
-            if (refused != null) {
-                edit(who, kept, refused);
-            } else {
-                manage(who, "Saved " + kept.name + ".");
-            }
+            keep(who, kept.original, kept.name, kept.stops, () -> manage(who, "Saved " + kept.name + "."),
+                    refused -> edit(who, kept, refused));
         }));
         if (kept.original != null) {
             buttons.add(menu.button(Component.text("Del"), "Deletes this colour", CELL, who -> {
@@ -347,23 +351,32 @@ final class ColourPicker {
     }
 
     /**
-     * Keeps a colour under a name, in place of {@code original} if that is another.
-     *
-     * @return why it cannot be kept, or null when it was
+     * Keeps a colour under a name, in place of {@code original} if that is another, asking
+     * first if another colour has that name already; then goes on with {@code done}, or
+     * with why it cannot be kept.
      */
-    private @Nullable String keep(Player player, @Nullable String original, String name, int[] stops) {
+    private void keep(Player player, @Nullable String original, String name, int[] stops, Runnable done, Consumer<String> refused) {
         Map<String, String> own = library.colours(player.getUniqueId());
         if (!name.matches(PreviewMenu.NAME)) {
-            return "Name it with up to 32 letters, digits, _ and -.";
+            refused.accept("Name it with up to 32 letters, digits, _ and -.");
+            return;
         }
         if (!own.containsKey(name) && own.size() >= PreviewMenu.MAX_KEPT) {
-            return PreviewMenu.MAX_KEPT + " colours are the most; delete one first.";
+            refused.accept(PreviewMenu.MAX_KEPT + " colours are the most; delete one first.");
+            return;
         }
-        if (original != null && !original.equals(name)) {
-            library.colour(player.getUniqueId(), original, null);
+        Runnable keep = () -> {
+            if (original != null && !original.equals(name)) {
+                library.colour(player.getUniqueId(), original, null);
+            }
+            library.colour(player.getUniqueId(), name, PreviewMenu.hex(stops));
+            done.run();
+        };
+        if (own.containsKey(name) && !name.equals(original)) {
+            menu.confirm(player, "Replace your colour " + name + "?", keep, () -> refused.accept("Kept the old " + name + "."));
+        } else {
+            keep.run();
         }
-        library.colour(player.getUniqueId(), name, PreviewMenu.hex(stops));
-        return null;
     }
 
     // ---- drawing --------------------------------------------------------------------
@@ -387,8 +400,10 @@ final class ColourPicker {
         double[] shades = bright ? SHADES_BRIGHT : SHADES;
         for (int row = 0; row < BLOCK.length; row++) {
             for (int column = 0; column < BLOCK[row].length(); column++) {
+                double middleX = (BLOCK[row].length() - 1) / 2.0;
+                double middleY = (BLOCK.length - 1) / 2.0;
                 double share = out
-                        ? Math.hypot(column - 2, row - 2) / Math.hypot(2, 2)
+                        ? Math.hypot(column - middleX, row - middleY) / Math.hypot(middleX, middleY)
                         : (BLOCK.length - 1 - row) / (BLOCK.length - 1.0);
                 int leaf = stops == null ? OWN_GREEN : stops.length > 1 ? LeafColours.fade(stops, share) : stops[0];
                 char kind = BLOCK[row].charAt(column);
@@ -401,6 +416,14 @@ final class ColourPicker {
             }
         }
         return colours;
+    }
+
+    /** Whether a colour is lighter than the leaf texture, and so only shows on its lighter copy. */
+    static boolean light(int[] stops) {
+        return Arrays.stream(stops).anyMatch(colour -> {
+            int rgb = colour & 0xFFFFFF;
+            return 0.299 * (rgb >> 16 & 255) + 0.587 * (rgb >> 8 & 255) + 0.114 * (rgb & 255) > 170;
+        });
     }
 
     private static int shaded(int colour, double shade) {

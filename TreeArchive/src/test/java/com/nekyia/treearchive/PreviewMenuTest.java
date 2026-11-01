@@ -44,7 +44,7 @@ class PreviewMenuTest {
         assertFalse(PreviewMenu.fits("#abcdefgh"));
     }
 
-    /** The mix screen: what the client sends is read as typed, and a colour left alone stays exactly as it was. */
+    /** The mix screen: what the client sends is clamped, and a colour left alone stays exactly as it was. */
     @Test
     void mixingKeepsAColourLeftAlone() {
         int rgb = 0x6c8fe8;
@@ -52,12 +52,20 @@ class PreviewMenuTest {
         Float hue = (float) Math.round(hsb[0] * 360);
         Float saturation = (float) Math.round(hsb[1] * 100);
         Float brightness = (float) Math.round(hsb[2] * 100);
-        assertEquals(rgb, ColourPicker.mixed(hue, saturation, brightness, "#6c8fe8", rgb));
-        assertEquals(0x123456, ColourPicker.mixed(hue, saturation, brightness, "#123456", rgb));
-        assertEquals(rgb, ColourPicker.mixed(hue, saturation, brightness, "not a colour", rgb));
-        assertEquals(rgb, ColourPicker.mixed(null, Float.NaN, null, null, rgb));
-        assertEquals(0xff0000, ColourPicker.mixed(0f, 100f, 100f, "#6c8fe8", rgb));
-        assertEquals(0xffffff, ColourPicker.mixed(9999f, -5f, 9999f, "#6c8fe8", rgb));
+        assertEquals(rgb, ColourPicker.mixed(hue, saturation, brightness, rgb));
+        assertEquals(rgb, ColourPicker.mixed(null, Float.NaN, null, rgb));
+        assertEquals(0xff0000, ColourPicker.mixed(0f, 100f, 100f, rgb));
+        assertEquals(0xffffff, ColourPicker.mixed(9999f, -5f, 9999f, rgb));
+    }
+
+    /** Light colours only show on the lighter texture, so taking one turns bright on. */
+    @Test
+    void lightColoursAreKnown() {
+        assertTrue(ColourPicker.light(new int[] {0xffffff}));
+        assertTrue(ColourPicker.light(new int[] {0x315d88, 0xb5c8ff}));
+        assertTrue(ColourPicker.light(new int[] {0xe0f7b6 | LeafColours.PRESENT}));
+        assertFalse(ColourPicker.light(new int[] {0x315d88, 0x1b5e20}));
+        assertFalse(ColourPicker.light(new int[] {0xc0392b}));
     }
 
     /** The example block shows what the tree has: fade, brightness, secondary colour, and blossoms by how many. */
@@ -70,13 +78,13 @@ class PreviewMenuTest {
         assertEquals(1, count(ColourPicker.exampleColours(red, false, false, 0, blossom, 20), 0xff00ff));
         assertEquals(5, count(ColourPicker.exampleColours(red, false, false, 0, blossom, 100), 0xff00ff));
         assertEquals(0, count(ColourPicker.exampleColours(red, false, false, 0, 0, 100), 0xff00ff));
-        assertEquals(5, count(ColourPicker.exampleColours(red, false, true, secondary, 0, 30), 0x00ebeb));
+        assertEquals(3, count(ColourPicker.exampleColours(red, false, true, secondary, 0, 30), 0x00ebeb));
         // Fading up: the last colour on top. Fading out: the first in the middle.
         int[][] up = ColourPicker.exampleColours(new int[] {0x000000, 0xffffff}, false, true, 0, 0, 30);
-        assertEquals(0, up[4][0] >> 16 & 255);
+        assertEquals(0, up[2][0] >> 16 & 255);
         assertTrue((up[0][0] >> 16 & 255) > 200);
         int[][] out = ColourPicker.exampleColours(new int[] {0x000000, 0xffffff}, true, true, 0, 0, 30);
-        assertEquals(0, out[2][2]);
+        assertEquals(0, out[1][2]);
         assertTrue((out[0][0] >> 16 & 255) > 200);
         // Bright is lighter, and without a colour the block still shows its own green.
         assertTrue((ColourPicker.exampleColours(red, false, true, 0, 0, 30)[0][0] >> 16 & 255)
