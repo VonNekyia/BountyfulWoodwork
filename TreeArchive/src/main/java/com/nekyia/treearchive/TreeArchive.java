@@ -316,10 +316,10 @@ final class TreeArchive {
         return persisted;
     }
 
-    /** What stands in a region only because nothing has touched it, by kind: blocks the game would not let stay. */
-    private static Map<String, Integer> illegal(org.bukkit.World world, Region region) {
+    /** What stands at these spots only because nothing has touched it, by kind: blocks the game would not let stay. */
+    static Map<String, Integer> illegal(org.bukkit.World world, Iterable<BlockVector3> positions) {
         Map<String, Integer> illegal = new TreeMap<>();
-        for (BlockVector3 position : region) {
+        for (BlockVector3 position : positions) {
             Block block = world.getBlockAt(position.x(), position.y(), position.z());
             if (!block.isEmpty() && !block.getBlockData().isSupported(block)) {
                 illegal.merge(block.getType().getKey().getKey(), 1, Integer::sum);

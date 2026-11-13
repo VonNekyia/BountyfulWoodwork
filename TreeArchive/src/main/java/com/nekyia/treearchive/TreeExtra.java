@@ -1,8 +1,6 @@
 package com.nekyia.treearchive;
 
-import java.util.ArrayList;
 import java.util.EnumSet;
-import java.util.List;
 import java.util.Set;
 import org.bukkit.Material;
 
@@ -58,23 +56,6 @@ enum TreeExtra {
         this.length = length;
         this.body = body;
         this.tip = tip;
-    }
-
-    /**
-     * What these modifiers ask for that has no firm hold by the game's rules, and falls once
-     * the block it depends on changes: a tree with any of it is an illegal tree.
-     */
-    static List<String> illegal(Set<String> modifiers) {
-        List<String> illegal = new ArrayList<>();
-        if (TreeSelection.find(modifiers, TreePaster.Mistletoe.DRY.modifier) != null) {
-            illegal.add(TreePaster.Mistletoe.DRY.modifier);
-        }
-        for (TreeExtra extra : values()) {
-            if (extra.grows != Grows.SIDE && TreeSelection.find(modifiers, extra.modifier) != null) {
-                illegal.add(extra.modifier);
-            }
-        }
-        return illegal;
     }
 
     /** Whether this block is one of these: foliage to a preview, so a hit on its ghost takes no marker away. */

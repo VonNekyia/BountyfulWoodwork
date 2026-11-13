@@ -7,6 +7,7 @@ import com.sk89q.worldedit.bukkit.BukkitAdapter;
 import com.sk89q.worldedit.extent.clipboard.Clipboard;
 import com.sk89q.worldedit.math.BlockVector3;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -136,16 +137,23 @@ final class TreeBrush implements Listener {
                     NamedTextColor.RED));
             return;
         }
-        if (!paster.paste(entry.type(), clipboard, base, player, false, pick.modifiers(), pick.paint())) {
+        List<TreePaster.Placement> placed = paster.paste(entry.type(), clipboard, base, player, false,
+                pick.modifiers(), pick.paint());
+        if (placed == null) {
             player.sendActionBar(Component.text("The tree would collide with blocks there.", NamedTextColor.RED));
             return;
         }
-        // In the action bar, as a brush plants one tree after another.
-        List<String> illegal = TreeExtra.illegal(pick.modifiers());
-        if (!illegal.isEmpty()) {
-            player.sendActionBar(Component.text("Illegal tree: " + String.join(", ", illegal)
-                    + " will fall once what holds them changes.", NamedTextColor.YELLOW));
-        }
+        // What stands without hold, whether the blueprint or a modifier put it there, judged
+        // on the ground it stands on. Two ticks later, as FastAsyncWorldEdit may set the
+        // blocks after this tick; in the action bar, as a brush plants one tree after another.
+        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+            Map<String, Integer> illegal = TreeArchive.illegal(base.getWorld(),
+                    placed.stream().map(at -> BlockVector3.at(at.x(), at.y(), at.z())).toList());
+            if (!illegal.isEmpty()) {
+                player.sendActionBar(Component.text("Illegal tree: " + illegal
+                        + " will fall once what holds them changes.", NamedTextColor.YELLOW));
+            }
+        }, 2);
     }
 
     /** Sets one of the spec's blocks, and lets the previews it lies in grow its tree. */

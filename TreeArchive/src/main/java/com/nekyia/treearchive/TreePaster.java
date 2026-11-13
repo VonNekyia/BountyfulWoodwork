@@ -102,19 +102,21 @@ final class TreePaster {
      * standing and nothing would ever fit otherwise.
      */
     boolean paste(String type, Clipboard clipboard, Block base, @Nullable Player player, boolean intoTrees) {
-        return paste(type, clipboard, base, player, intoTrees, Set.of(), null);
+        return paste(type, clipboard, base, player, intoTrees, Set.of(), null) != null;
     }
 
     /**
      * As above, with what the tree's modifiers ask for hung in the crown, and the
      * leaves painted - kept in their chunks, see {@link #keepColours}.
+     *
+     * @return the blocks set, or null when the tree was not placed
      */
-    boolean paste(String type, Clipboard clipboard, Block base, @Nullable Player player, boolean intoTrees,
-                  Set<String> modifiers, LeafColours.@Nullable Paint paint) {
+    @Nullable List<Placement> paste(String type, Clipboard clipboard, Block base, @Nullable Player player,
+                                    boolean intoTrees, Set<String> modifiers, LeafColours.@Nullable Paint paint) {
         List<Placement> placements = plan(clipboard, base, intoTrees,
                 turns(ThreadLocalRandom.current()), Set.of(), false);
         if (placements == null) {
-            return false;
+            return null;
         }
         placements = decorate(placements, modifiers, base.getWorld(), ThreadLocalRandom.current(), false);
 
@@ -128,10 +130,10 @@ final class TreePaster {
             }
         } catch (WorldEditException e) {
             plugin.getLogger().warning("Could not place a " + type + " tree: " + e.getMessage());
-            return false;
+            return null;
         }
         keepColours(world, placements, paint);
-        return true;
+        return placements;
     }
 
     /**
